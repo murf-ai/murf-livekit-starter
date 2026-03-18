@@ -3,5 +3,4 @@ builder = "nixpacks"
 
 [deploy]
 startCommand = "uv run python src/agent.py start"
-healthcheckPath = "/"
 restartPolicyType = "on_failure"
