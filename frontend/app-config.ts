@@ -42,9 +42,9 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   supportsScreenShare: true,
   isPreConnectBufferEnabled: true,
 
-  logo: '/lk-logo.svg',
+  logo: '/murf-logo.svg',
   accent: '#6366F1',
-  logoDark: '/lk-logo-dark.svg',
+  logoDark: '/murf-logo-dark.svg',
   accentDark: '#818cf8',
   startButtonText: 'Start talking',
 
