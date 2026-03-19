@@ -108,8 +108,6 @@ Want to deploy this beyond localhost? You'll need to deploy **two services**: th
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/tIVCF1?referralCode=cNjn2P&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
-*Replace the link above with your Railway template URL once created.*
-
 Set these environment variables in Railway:
 
 - `MURF_API_KEY`
@@ -133,6 +131,16 @@ Set these environment variables in Vercel:
 - `AGENT_NAME` (optional — for explicit agent dispatch)
 
 The frontend is a standard Next.js app. Point it at the same LiveKit instance your backend agent is connected to.
+
+### Connecting them
+
+The frontend and backend don't call each other directly — they both connect to **LiveKit**, which handles the real-time audio transport.
+
+1. Use the **same** `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` on both Railway and Vercel
+2. Set `AGENT_NAME=my-agent` on Vercel — this matches the `agent_name="my-agent"` registered in `backend/src/agent.py`
+3. Verify: Railway logs should show the agent connected to LiveKit. Open your Vercel URL, click **Start talking** — the agent should respond
+
+If the agent doesn't connect, double-check that both services point to the same LiveKit project and that the backend is running (check Railway logs).
 
 ---
 
