@@ -85,8 +85,25 @@ pnpm install
 **Option A — All-in-one (from repo root):**
 
 ```bash
+<<<<<<< HEAD
+<<<<<<< HEAD
+#MacOS/Linux
 chmod +x start_app.sh
 ./start_app.sh
+
+#Windows
+.\start_app.ps1
+=======
+#macOS/Linux
+=======
+# macOS/Linux
+>>>>>>> 72302b3 (update readme)
+chmod +x start_app.sh
+./start_app.sh
+
+# Windows(PowerShell)
+.\start_app.sh
+>>>>>>> 74d6407 (add windows startup script and document cross-platform run flow)
 ```
 
 **Option B — Separate terminals:**
