@@ -4,7 +4,7 @@ Build a production voice AI agent in 5 minutes. Powered by the fastest TTS on th
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Murf Falcon](https://img.shields.io/badge/TTS-Murf%20Falcon-6366F1)](https://murf.ai/api/docs/text-to-speech/streaming) [![LiveKit](https://img.shields.io/badge/Transport-LiveKit-002cf2)](https://docs.livekit.io) [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 
-<!-- TODO: Add demo GIF here -->
+<!-- TODO: Add a demo GIF or video here before publishing -->
 
 ---
 
@@ -48,7 +48,7 @@ User speaks → [Deepgram STT] → text → [LLM] → response text → [Murf Fa
 ### Step 1: Clone the repo
 
 ```bash
-git clone https://github.com/sanchitasunil/murf-livekit-starter.git
+git clone https://github.com/murf-ai/murf-livekit-starter.git
 cd murf-livekit-starter
 ```
 
@@ -85,12 +85,12 @@ pnpm install
 **Option A — All-in-one (from repo root):**
 
 ```bash
-#macOS/Linux
+# macOS/Linux
 chmod +x start_app.sh
 ./start_app.sh
 
-#Windows(PowerShell)
-.\start_app.sh
+# Windows (PowerShell)
+.\start_app.ps1
 ```
 
 **Option B — Separate terminals:**
@@ -135,7 +135,7 @@ The backend runs as a long-lived Python process that connects to LiveKit as an a
 
 ### Frontend (Next.js) — Deploy to Vercel
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/sanchitasunil/murf-livekit-starter&root-directory=frontend&env=LIVEKIT_URL,LIVEKIT_API_KEY,LIVEKIT_API_SECRET&project-name=murf-voice-agent&repository-name=murf-voice-agent)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/murf-ai/murf-livekit-starter&root-directory=frontend&env=LIVEKIT_URL,LIVEKIT_API_KEY,LIVEKIT_API_SECRET&project-name=murf-voice-agent&repository-name=murf-voice-agent)
 
 Set these environment variables in Vercel:
 
@@ -235,10 +235,16 @@ murf-livekit-starter/
 │   ├── app-config.ts        # Branding, title, button text, accent
 │   ├── .env.example         # Frontend env template
 │   └── package.json         # Node deps (pnpm)
-├── start_app.sh             # Start LiveKit + backend + frontend locally
+├── start_app.sh             # Start LiveKit + backend + frontend (macOS/Linux)
+├── start_app.ps1            # Start LiveKit + backend + frontend (Windows)
 ├── README.md                # This file
 └── CONTRIBUTING.md          # How to contribute
 ```
+
+For deeper documentation on each part, see:
+
+- [Backend Documentation](./backend/README.md) — agent pipeline, voice/LLM/STT configuration, testing, deployment
+- [Frontend Documentation](./frontend/README.md) — UI customization, visualizers, theming, component architecture
 
 ---
 
