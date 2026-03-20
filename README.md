@@ -1,6 +1,6 @@
 # Voice Agent Starter — Powered by Murf Falcon
 
-Build a production voice AI agent in 5 minutes. Powered by the fastest TTS on the market — swap the system prompt to build anything from customer support to language tutors.
+Build a production voice AI agent in 5 minutes. Powered by the fastest TTS on the market - swap the system prompt to build anything from customer support to language tutors.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Murf Falcon](https://img.shields.io/badge/TTS-Murf%20Falcon-6366F1)](https://murf.ai/api/docs/text-to-speech/streaming) [![LiveKit](https://img.shields.io/badge/Transport-LiveKit-002cf2)](https://docs.livekit.io) [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 
@@ -10,9 +10,9 @@ Build a production voice AI agent in 5 minutes. Powered by the fastest TTS on th
 
 ## Why Murf Falcon
 
-- **55ms model latency** — fastest production TTS
+- **55ms model latency** - fastest production TTS
 - **130ms time-to-first-audio** across 10+ global regions
-- **$0.01/min** — up to 10x cheaper than alternatives
+- **$0.01/min** - up to 10x cheaper than alternatives
 - **150+ voices** across 35+ languages
 - **99.38% pronunciation accuracy**
 
@@ -31,7 +31,7 @@ User speaks → [Deepgram STT] → text → [LLM] → response text → [Murf Fa
 ### Prerequisites
 
 - **Python** 3.10+
-- **[uv](https://docs.astral.sh/uv/)** — fast Python package manager
+- **[uv](https://docs.astral.sh/uv/)** - fast Python package manager
   ```bash
   # macOS/Linux
   curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -82,7 +82,7 @@ pnpm install
 
 ### Step 5: Run it
 
-**Option A — All-in-one (from repo root):**
+**Option A - All-in-one (from repo root):**
 
 ```bash
 # macOS/Linux
@@ -93,7 +93,7 @@ chmod +x start_app.sh
 .\start_app.ps1
 ```
 
-**Option B — Separate terminals:**
+**Option B - Separate terminals:**
 
 ```bash
 # Terminal 1 — LiveKit Server
@@ -162,7 +162,7 @@ If the agent doesn't connect, double-check that both services point to the same 
 
 The default system prompt makes this a **customer support agent**. You can change the agent’s behavior by editing the prompt.
 
-**Where the prompt lives:** `backend/src/agent.py` — the `SYSTEM_PROMPT` constant (near the top of the file, after the imports). Change that string to change what your voice agent does.
+**Where the prompt lives:** `backend/src/agent.py`- the `SYSTEM_PROMPT` constant (near the top of the file, after the imports). Change that string to change what your voice agent does.
 
 ### Example prompts (copy-paste)
 
