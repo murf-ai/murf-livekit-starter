@@ -4,8 +4,6 @@ Build a production voice AI agent in 5 minutes. Powered by the fastest TTS on th
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Murf Falcon](https://img.shields.io/badge/TTS-Murf%20Falcon-6366F1)](https://murf.ai/api/docs/text-to-speech/streaming) [![LiveKit](https://img.shields.io/badge/Transport-LiveKit-002cf2)](https://docs.livekit.io) [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 
-<!-- TODO: Add a demo GIF or video here before publishing -->
-
 ---
 
 ## Why Murf Falcon
@@ -20,8 +18,20 @@ Build a production voice AI agent in 5 minutes. Powered by the fastest TTS on th
 
 ## Architecture
 
-```
-User speaks → [Deepgram STT] → text → [LLM] → response text → [Murf Falcon TTS] → audio → [LiveKit] → User hears
+```mermaid
+flowchart LR
+    A[🎙️ User speaks] -->|audio| B[Deepgram STT]
+    B -->|text| C[LLM]
+    C -->|response text| D[Murf Falcon TTS]
+    D -->|audio| E[LiveKit]
+    E -->|stream| F[🔊 User hears]
+
+    style A fill:#444441,stroke:#888780,color:#fff
+    style B fill:#185FA5,stroke:#85B7EB,color:#fff
+    style C fill:#534AB7,stroke:#AFA9EC,color:#fff
+    style D fill:#0F6E56,stroke:#5DCAA5,color:#fff
+    style E fill:#D85A30,stroke:#F0997B,color:#fff
+    style F fill:#444441,stroke:#888780,color:#fff
 ```
 
 ---
@@ -238,7 +248,6 @@ murf-livekit-starter/
 ├── start_app.sh             # Start LiveKit + backend + frontend (macOS/Linux)
 ├── start_app.ps1            # Start LiveKit + backend + frontend (Windows)
 ├── README.md                # This file
-└── CONTRIBUTING.md          # How to contribute
 ```
 
 For deeper documentation on each part, see:
@@ -254,11 +263,11 @@ How does Murf Falcon compare? We measured time-to-first-byte (TTFB) across provi
 
 | Provider | TTFB (p50) | TTFB (p95) | Cost/min |
 |----------|-----------|-----------|----------|
-| **Murf Falcon** | **~55ms** | **~80ms** | **$0.01** |
-| ElevenLabs | ~200ms | ~350ms | $0.10 |
-| OpenAI TTS | ~300ms | ~500ms | $0.06 |
+| **Murf Falcon** | **~55ms** | **~130ms** | **$0.01** |
+| ElevenLabs | ~75ms | ~150ms | $0.05 |
+| OpenAI TTS | ~300ms | ~500ms | $0.015 |
 | AWS Polly | ~150ms | ~250ms | $0.02 |
-| Cartesia | ~135ms | ~200ms | $0.04 |
+| Cartesia | ~40ms | ~170ms | $0.02 |
 
 > Numbers are approximate and vary by region. Run your own benchmarks with [tts-latency-benchmarker](https://github.com/sahilsgupta/tts-latency-benchmarker) — an open-source tool that tests TTS APIs across global regions with real p50/p95 stats.
 
