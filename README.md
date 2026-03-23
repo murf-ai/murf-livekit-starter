@@ -10,7 +10,7 @@ Build a production voice AI agent in 5 minutes. Powered by the fastest TTS on th
 
 - **55ms model latency** - fastest production TTS
 - **130ms time-to-first-audio** across 10+ global regions
-- **$0.01/min** - up to 10x cheaper than alternatives
+- **$0.01/1000 characters** - up to 10x cheaper than alternatives
 - **150+ voices** across 35+ languages
 - **99.38% pronunciation accuracy**
 
