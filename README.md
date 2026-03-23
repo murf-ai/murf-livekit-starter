@@ -257,28 +257,14 @@ For deeper documentation on each part, see:
 
 ---
 
-## Benchmarks
-
-How does Murf Falcon compare? We measured time-to-first-byte (TTFB) across providers:
-
-| Provider | TTFB (p50) | TTFB (p95) | Cost/min |
-|----------|-----------|-----------|----------|
-| **Murf Falcon** | **~55ms** | **~130ms** | **$0.01** |
-| ElevenLabs | ~75ms | ~150ms | $0.05 |
-| OpenAI TTS | ~300ms | ~500ms | $0.015 |
-| AWS Polly | ~150ms | ~250ms | $0.02 |
-| Cartesia | ~40ms | ~170ms | $0.02 |
-
-> Numbers are approximate and vary by region. Run your own benchmarks with [tts-latency-benchmarker](https://github.com/sahilsgupta/tts-latency-benchmarker) — an open-source tool that tests TTS APIs across global regions with real p50/p95 stats.
-
----
-
 ## Links
 
 - [Murf API Docs](https://murf.ai/api/docs)
 - [Murf Voice Library](https://murf.ai/api/docs/voices-styles/voice-library)
 - [LiveKit Docs](https://docs.livekit.io)
 - [Deepgram Docs](https://developers.deepgram.com)
+- [Murf Falcon Benchmarks](https://murf.ai/falcon/benchmarks)
+- [TTS Latency Benchmarker](https://github.com/sahilsgupta/tts-latency-benchmarker) — run your own p50/p95 tests across providers
 - [Murf Discord](https://discord.gg/FbKAy96Sz7)
 - [Murf Startup Incubator](https://murf.ai/api) — 50M free characters for startups
 
