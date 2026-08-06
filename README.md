@@ -2,7 +2,7 @@
 
 Build a production voice AI agent in 5 minutes. Powered by the fastest TTS on the market - swap the system prompt to build anything from customer support to language tutors.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Murf Falcon](https://img.shields.io/badge/TTS-Murf%20Falcon-6366F1)](https://murf.ai/api/docs/text-to-speech/streaming) [![LiveKit](https://img.shields.io/badge/Transport-LiveKit-002cf2)](https://docs.livekit.io) [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Murf Falcon](<https://img.shields.io/badge/TTS-Murf%20Falcon-6366F1>)](https://murf.ai/api/docs/text-to-speech/streaming) [![LiveKit](https://img.shields.io/badge/Transport-LiveKit-002cf2)](https://docs.livekit.io) [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 
 ---
 
@@ -66,14 +66,14 @@ cd murf-livekit-starter
 
 Create `.env.local` in both `backend/` and `frontend/` (copy from `.env.example` in each). You need:
 
-| Variable                               | Where to get it                                        | Required |
-| -------------------------------------- | ------------------------------------------------------ | -------- |
-| `LIVEKIT_URL`                          | LiveKit Cloud dashboard                                | Yes      |
-| `LIVEKIT_API_KEY`                      | LiveKit Cloud dashboard                                | Yes      |
-| `LIVEKIT_API_SECRET`                   | LiveKit Cloud dashboard                                | Yes      |
-| `MURF_API_KEY`                         | [murf.ai/api/dashboard](https://murf.ai/api/dashboard) | Yes      |
-| `DEEPGRAM_API_KEY`                     | [deepgram.com](https://deepgram.com)                   | Yes      |
-| `GOOGLE_API_KEY` (or `OPENAI_API_KEY`) | Depends on LLM choice                                  | Yes      |
+| Variable                                   | Where to get it                                       | Required |
+| ------------------------------------------ | ----------------------------------------------------- | -------- |
+| `LIVEKIT_URL`                            | LiveKit Cloud dashboard                               | Yes      |
+| `LIVEKIT_API_KEY`                        | LiveKit Cloud dashboard                               | Yes      |
+| `LIVEKIT_API_SECRET`                     | LiveKit Cloud dashboard                               | Yes      |
+| `MURF_API_KEY`                           | [murf.ai/api/dashboard](https://murf.ai/api/dashboard) | Yes      |
+| `DEEPGRAM_API_KEY`                       | [deepgram.com](https://deepgram.com)                   | Yes      |
+| `GOOGLE_API_KEY` (or `OPENAI_API_KEY`) | Depends on LLM choice                                 | Yes      |
 
 ### Step 3: Install backend dependencies
 
@@ -250,7 +250,7 @@ murf-livekit-starter/
 ├── README.md                # This file
 ```
 
-For deeper documentation on each part, see:
+    For deeper documentation on each part, see:
 
 - [Backend Documentation](./backend/README.md) — agent pipeline, voice/LLM/STT configuration, testing, deployment
 - [Frontend Documentation](./frontend/README.md) — UI customization, visualizers, theming, component architecture

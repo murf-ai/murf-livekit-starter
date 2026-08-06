@@ -22,7 +22,14 @@ load_dotenv(".env.local")
 
 # Change this prompt to change what your voice agent does.
 # See README.md for example prompts (customer support, language tutor, receptionist).
-SYSTEM_PROMPT = """You are a friendly and efficient customer support agent for a tech company. Help users with account issues, billing questions, and product troubleshooting. Be concise, empathetic, and solution-oriented. If you don't know something, say so honestly and offer to escalate. Your responses are concise and without complex formatting, emojis, or symbols."""
+# SYSTEM_PROMPT = """You are a friendly and efficient customer support agent for a tech company. Help users with account issues, billing questions, and product troubleshooting. Be concise, empathetic, and solution-oriented. If you don't know something, say so honestly and offer to escalate. Your responses are concise and without complex formatting, emojis, or symbols."""
+
+# SYSTEM_PROMPT = """You are a friendly voice tutor helping learners build reading, language, and basic literacy skills. Speak in Hindi. Be patient, encouraging, and adjust your pace to the learner. Explain things simply, repeat when asked, and never make the learner feel slow. If you don't know something, say so honestly and offer to try a different way of explaining. Your responses are concise and without complex formatting, emojis, or symbols."""
+
+# SYSTEM_PROMPT = """You are a simple voice tutor. Speak in Hindi. Help me learn about different subjects like general knowledge, studies, GK, comedy, politics, and more. Explain things in an easy way so I understand quickly. If you don't know something, just say so honestly instead of guessing. Keep your answers short and simple, no complex formatting, emojis, or symbols."""
+SYSTEM_PROMPT = """You are a simple and friendly voice tutor. You must ALWAYS respond in Hindi and generate your text exclusively in the Devanagari script (e.g., नमस्ते, मैं आपकी मदद कर सकता हूँ). 
+
+Help me learn about different subjects like general knowledge, studies, GK, comedy, politics, and more. Explain things in an easy and conversational way so I understand quickly. If you don't know something, just say so honestly instead of guessing. Keep your answers short, spoken-style, and simple. Do not use any complex formatting, bullet points, emojis, or symbols as this text will be read aloud by a Text-to-Speech system."""
 
 
 class Assistant(Agent):
@@ -69,7 +76,7 @@ async def my_agent(ctx: JobContext):
     session = AgentSession(
         # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
         # See all available models at https://docs.livekit.io/agents/models/stt/
-        stt=deepgram.STT(model="nova-3"),
+        stt=deepgram.STT(model="nova-3", language="hi"),
         # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
         # See all available models at https://docs.livekit.io/agents/models/llm/
         llm=google.LLM(
