@@ -1,3 +1,4 @@
+// Configured for Murf LiveKit Starter
 export interface AppConfig {
   pageTitle: string;
   pageDescription: string;
