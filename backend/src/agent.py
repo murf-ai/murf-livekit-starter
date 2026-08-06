@@ -8,12 +8,13 @@ from livekit.agents import (
     AgentSession,
     JobContext,
     JobProcess,
+    RunContext,
     cli,
-    inference,
-    tokenize,
+    function_tool,
     room_io,
+    tokenize,
 )
-from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
+from livekit.plugins import deepgram, google, murf, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 logger = logging.getLogger("agent")
@@ -22,29 +23,195 @@ load_dotenv(".env.local")
 
 # Change this prompt to change what your voice agent does.
 # See README.md for example prompts (customer support, language tutor, receptionist).
-SYSTEM_PROMPT = """You are a friendly and efficient customer support agent for a tech company. Help users with account issues, billing questions, and product troubleshooting. Be concise, empathetic, and solution-oriented. If you don't know something, say so honestly and offer to escalate. Your responses are concise and without complex formatting, emojis, or symbols."""
+SYSTEM_PROMPT = """You are FinSafe, a warm, professional, and accessible voice assistant for financial services.
+Your primary role is to educate users on:
+1. Government financial schemes (such as PMJDY, PMSBY, PMJJBY, Atal Pension Yojana, Sukanya Samriddhi Yojana, PM Mudra Yojana, Senior Citizen Savings Scheme, Sovereign Gold Bond).
+2. General banking literacy (KYC, UPI safety, savings vs current accounts, fixed deposits, credit scores, interest rates).
+3. Fraud awareness and scam protection (detecting OTP/PIN scams, phishing links, urgent fake KYC block messages, fake investment schemes, screen sharing app traps).
+
+Guidelines for your speech output:
+- Speak in clear, plain language without financial jargon. Explain complex terms simply.
+- Keep your responses concise, conversational, and direct, suitable for voice output.
+- NEVER use special symbols, emojis, markdown formatting, bullet points, or bold text in your spoken responses.
+- Safety Rule: ALWAYS remind users NEVER to share OTPs, PINs, passwords, CVVs, or full card numbers with anyone over the phone or online, including bank officials or yourself.
+- If a user describes a potential scam, evaluate the risk immediately and provide urgent action steps (such as hanging up, blocking the sender, calling official bank helpline, or reporting on 1930 Cybercrime Helpline).
+"""
 
 
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(instructions=SYSTEM_PROMPT)
 
-    # To add tools, use the @function_tool decorator.
-    # Here's an example that adds a simple weather tool.
-    # You also have to add `from livekit.agents import function_tool, RunContext` to the top of this file
-    # @function_tool
-    # async def lookup_weather(self, context: RunContext, location: str):
-    #     """Use this tool to look up current weather information in the given location.
-    #
-    #     If the location is not supported by the weather service, the tool will indicate this. You must tell the user the location's weather is unavailable.
-    #
-    #     Args:
-    #         location: The location to look up weather information for (e.g. city name)
-    #     """
-    #
-    #     logger.info(f"Looking up weather for {location}")
-    #
-    #     return "sunny with a temperature of 70 degrees."
+    @function_tool
+    async def explain_scheme(self, context: RunContext, scheme_name: str) -> str:
+        """Lookup details, eligibility, benefits, and application guidance for official government financial schemes.
+
+        Args:
+            scheme_name: The name or acronym of the government scheme (e.g., 'PMJDY', 'PMSBY', 'PMJJBY', 'APY', 'Sukanya Samriddhi', 'Mudra', 'SCSS', 'SGB').
+        """
+        logger.info(f"Explaining government scheme: {scheme_name}")
+        normalized = scheme_name.lower().strip()
+
+        schemes = {
+            "pmjdy": (
+                "Pradhan Mantri Jan Dhan Yojana (PMJDY) offers a zero-balance bank account with a free RuPay debit card, "
+                "accidental insurance cover up to 2 Lakh rupees, and an overdraft facility up to 10,000 rupees after 6 months."
+            ),
+            "jan dhan": (
+                "Pradhan Mantri Jan Dhan Yojana (PMJDY) offers a zero-balance bank account with a free RuPay debit card, "
+                "accidental insurance cover up to 2 Lakh rupees, and an overdraft facility up to 10,000 rupees after 6 months."
+            ),
+            "pmsby": (
+                "Pradhan Mantri Suraksha Bima Yojana (PMSBY) is an accidental insurance scheme for ages 18 to 70. "
+                "It offers 2 Lakh rupees cover for accidental death or total disability for a nominal annual premium of 20 rupees."
+            ),
+            "suraksha bima": (
+                "Pradhan Mantri Suraksha Bima Yojana (PMSBY) is an accidental insurance scheme for ages 18 to 70. "
+                "It offers 2 Lakh rupees cover for accidental death or total disability for a nominal annual premium of 20 rupees."
+            ),
+            "pmjjby": (
+                "Pradhan Mantri Jeevan Jyoti Bima Yojana (PMJJBY) provides life insurance cover of 2 Lakh rupees for death due to any cause. "
+                "It is available for individuals aged 18 to 50 for an annual premium of 436 rupees."
+            ),
+            "jeevan jyoti": (
+                "Pradhan Mantri Jeevan Jyoti Bima Yojana (PMJJBY) provides life insurance cover of 2 Lakh rupees for death due to any cause. "
+                "It is available for individuals aged 18 to 50 for an annual premium of 436 rupees."
+            ),
+            "apy": (
+                "Atal Pension Yojana (APY) is a guaranteed pension scheme for unorganized sector workers aged 18 to 40. "
+                "Subscribers receive a monthly pension of 1,000 to 5,000 rupees after age 60, depending on their contributions."
+            ),
+            "atal pension": (
+                "Atal Pension Yojana (APY) is a guaranteed pension scheme for unorganized sector workers aged 18 to 40. "
+                "Subscribers receive a monthly pension of 1,000 to 5,000 rupees after age 60, depending on their contributions."
+            ),
+            "sukanya samriddhi": (
+                "Sukanya Samriddhi Yojana is a small savings scheme for a girl child below 10 years. "
+                "It offers high interest rates, tax deductions under Section 80C, and tax-free returns. It matures when the girl turns 21 or gets married after 18."
+            ),
+            "ssy": (
+                "Sukanya Samriddhi Yojana is a small savings scheme for a girl child below 10 years. "
+                "It offers high interest rates, tax deductions under Section 80C, and tax-free returns. It matures when the girl turns 21 or gets married after 18."
+            ),
+            "mudra": (
+                "Pradhan Mantri Mudra Yojana provides collateral-free business loans up to 10 Lakh rupees for micro and small enterprises. "
+                "Loans are categorized into Shishu up to 50,000 rupees, Kishor up to 5 Lakhs, and Tarun up to 10 Lakhs."
+            ),
+            "pmmy": (
+                "Pradhan Mantri Mudra Yojana provides collateral-free business loans up to 10 Lakh rupees for micro and small enterprises. "
+                "Loans are categorized into Shishu up to 50,000 rupees, Kishor up to 5 Lakhs, and Tarun up to 10 Lakhs."
+            ),
+            "scss": (
+                "Senior Citizen Savings Scheme (SCSS) is a government savings option for individuals aged 60 and above. "
+                "It offers high quarterly interest payouts, 5-year tenure expandable by 3 years, and tax benefit under Section 80C."
+            ),
+            "sgb": (
+                "Sovereign Gold Bonds (SGB) are government securities denominated in grams of gold. "
+                "They pay an annual interest of 2.5 percent plus gold value appreciation, with zero capital gains tax if held till 8-year maturity."
+            ),
+        }
+
+        for key, description in schemes.items():
+            if key in normalized:
+                return description
+
+        return (
+            f"Government scheme '{scheme_name}' is available through nationalized banks and post offices. "
+            "Please check eligibility criteria, required documents like Aadhaar and PAN card, and visit your nearest bank branch or official portal."
+        )
+
+    @function_tool
+    async def check_fraud_risk(
+        self, context: RunContext, scenario_description: str
+    ) -> str:
+        """Evaluate a financial situation or message for potential fraud and scam risks.
+
+        Args:
+            scenario_description: Description of the call, SMS, email, or offer received by the user.
+        """
+        logger.info(f"Evaluating fraud risk for: {scenario_description}")
+        desc = scenario_description.lower()
+
+        if any(
+            term in desc for term in ["otp", "pin", "cvv", "password", "card number"]
+        ):
+            return (
+                "HIGH RISK FRAUD WARNING: No legitimate bank, RBI official, or customer care agent will EVER ask for your OTP, PIN, password, or CVV. "
+                "Do NOT share any code. Disconnect the call immediately. If shared, block your card and call your bank hotline right away."
+            )
+        if any(
+            term in desc
+            for term in [
+                "anydesk",
+                "teamviewer",
+                "rustdesk",
+                "quicksupport",
+                "screen share",
+            ]
+        ):
+            return (
+                "HIGH RISK SCAM ALERT: Scammers ask victims to install screen sharing apps like AnyDesk or TeamViewer to steal banking credentials. "
+                "Do not install any app requested by strangers. Uninstall it immediately and disconnect your internet."
+            )
+        if any(
+            term in desc
+            for term in [
+                "kyc update",
+                "electricity bill",
+                "sim block",
+                "suspend account",
+            ]
+        ):
+            return (
+                "HIGH RISK PHISHING WARNING: Messages claiming your account, SIM, or electricity will be blocked unless you click a link or make a urgent payment are fake. "
+                "Never click links in SMS or WhatsApp messages. Contact your service provider directly using their official website or bill statement."
+            )
+        if any(
+            term in desc
+            for term in [
+                "guaranteed return",
+                "double money",
+                "youtube like",
+                "work from home job",
+                "part time job",
+                "task complete",
+            ]
+        ):
+            return (
+                "HIGH RISK INVESTMENT FRAUD: Offers promising guaranteed high returns, doubling money, or paying cash for liking videos are classic financial scams. "
+                "Never send money or join Telegram groups offering guaranteed profits."
+            )
+
+        return (
+            "MODERATE RISK ADVISORY: Always verify unexpected financial requests. "
+            "Never share credentials or click unknown links. If you suspect cyber fraud in India, immediately dial helpline 1930 or report on cybercrime.gov.in."
+        )
+
+    @function_tool
+    async def explain_banking_term(self, context: RunContext, term: str) -> str:
+        """Explain a banking or financial term in simple everyday language.
+
+        Args:
+            term: Banking concept or financial term (e.g., 'KYC', 'UPI', 'CIBIL', 'FD', 'RD', 'NEFT', 'IMPS', 'Repo rate').
+        """
+        logger.info(f"Explaining banking term: {term}")
+        t = term.lower().strip()
+
+        terms = {
+            "kyc": "KYC stands for Know Your Customer. It is a process where banks verify your identity using official documents like Aadhaar card and PAN card to prevent money laundering and identity theft.",
+            "upi": "UPI stands for Unified Payments Interface. It allows you to instantly transfer money between bank accounts 24/7 using a smartphone app and a virtual payment address without entering full bank account details.",
+            "cibil": "CIBIL score is a 3-digit number between 300 and 900 that represents your creditworthiness. A score above 750 helps you get loans and credit cards quickly with better interest rates.",
+            "credit score": "Credit score is a numerical rating of your credit history. Paying credit bills and loan EMIs on time keeps your credit score healthy.",
+            "fd": "Fixed Deposit (FD) is a safe investment where you deposit money with a bank for a fixed period at a guaranteed interest rate higher than a regular savings account.",
+            "rd": "Recurring Deposit (RD) allows you to deposit a fixed amount of money every month into your bank account and earn guaranteed interest over a chosen period.",
+            "repo rate": "Repo rate is the interest rate at which the central bank lends money to commercial banks. When repo rate increases, bank loan interest rates usually increase too.",
+        }
+
+        for key, explanation in terms.items():
+            if key in t:
+                return explanation
+
+        return f"{term} is a common financial concept. Ask your bank or financial advisor for specific details regarding your account."
 
 
 server = AgentServer()
@@ -73,17 +240,17 @@ async def my_agent(ctx: JobContext):
         # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
         # See all available models at https://docs.livekit.io/agents/models/llm/
         llm=google.LLM(
-                model="gemini-3.5-flash",
-            ),
+            model="gemini-3.5-flash",
+        ),
         # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
         # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
         tts=murf.TTS(
-                voice="en-IN-pooja", 
-                locale="en-IN",
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
+            voice="en-IN-pooja",
+            locale="en-IN",
+            style="Conversation",
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+            text_pacing=True,
+        ),
         # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
         # See more at https://docs.livekit.io/agents/build/turns
         turn_detection=MultilingualModel(),
