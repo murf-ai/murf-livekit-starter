@@ -35,8 +35,7 @@ export interface AppConfig {
 export const APP_CONFIG_DEFAULTS: AppConfig = {
   companyName: 'Suraksha Saathi',
   pageTitle: 'Suraksha Saathi',
-  pageDescription:
-    'Telugu-first UPI fraud awareness voice agent powered by Murf Falcon',
+  pageDescription: 'Telugu-first UPI fraud awareness voice agent powered by Murf Falcon',
 
   supportsChatInput: true,
   supportsVideoInput: true,
