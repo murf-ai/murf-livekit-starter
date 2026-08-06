@@ -27,14 +27,14 @@ cp .env.example .env.local
 
 Fill in your keys in `.env.local`:
 
-| Variable | Where to get it |
-|----------|-----------------|
-| `LIVEKIT_URL` | [LiveKit Cloud](https://cloud.livekit.io/) → Settings |
-| `LIVEKIT_API_KEY` | [LiveKit Cloud](https://cloud.livekit.io/) → Settings |
-| `LIVEKIT_API_SECRET` | [LiveKit Cloud](https://cloud.livekit.io/) → Settings |
-| `MURF_API_KEY` | [murf.ai/api/dashboard](https://murf.ai/api/dashboard) |
-| `DEEPGRAM_API_KEY` | [deepgram.com](https://console.deepgram.com/) |
-| `GOOGLE_API_KEY` | [aistudio.google.com](https://aistudio.google.com/apikey) |
+| Variable             | Where to get it                                           |
+| -------------------- | --------------------------------------------------------- |
+| `LIVEKIT_URL`        | [LiveKit Cloud](https://cloud.livekit.io/) → Settings     |
+| `LIVEKIT_API_KEY`    | [LiveKit Cloud](https://cloud.livekit.io/) → Settings     |
+| `LIVEKIT_API_SECRET` | [LiveKit Cloud](https://cloud.livekit.io/) → Settings     |
+| `MURF_API_KEY`       | [murf.ai/api/dashboard](https://murf.ai/api/dashboard)    |
+| `DEEPGRAM_API_KEY`   | [deepgram.com](https://console.deepgram.com/)             |
+| `GOOGLE_API_KEY`     | [aistudio.google.com](https://aistudio.google.com/apikey) |
 
 For LiveKit Cloud users, you can auto-populate LiveKit credentials:
 
@@ -149,12 +149,12 @@ tts=murf.TTS(
 
 Some voice options:
 
-| Voice ID | Description |
-|----------|-------------|
-| `en-US-matthew` | US English, male (default) |
-| `en-US-natalie` | US English, female |
-| `en-UK-ruby` | UK English, female |
-| `en-US-miles` | US English, male |
+| Voice ID | Description                      |
+| -------- | -------------------------------- |
+| `Anisha` | Indian English, female (default) |
+| `Amara`  | US English, female               |
+| `Hazel`  | UK English, female               |
+| `Gordon` | US English, male                 |
 
 Browse all 150+ voices: [Murf Voice Library](https://murf.ai/api/docs/voices-styles/voice-library).
 
@@ -192,6 +192,7 @@ To run tests in CI, you'll need to add `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LI
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/tIVCF1?referralCode=cNjn2P&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
 Set these environment variables in Railway:
+
 - `MURF_API_KEY`
 - `DEEPGRAM_API_KEY`
 - `GOOGLE_API_KEY`

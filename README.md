@@ -66,14 +66,14 @@ cd murf-livekit-starter
 
 Create `.env.local` in both `backend/` and `frontend/` (copy from `.env.example` in each). You need:
 
-| Variable | Where to get it | Required |
-|----------|-----------------|----------|
-| `LIVEKIT_URL` | LiveKit Cloud dashboard | Yes |
-| `LIVEKIT_API_KEY` | LiveKit Cloud dashboard | Yes |
-| `LIVEKIT_API_SECRET` | LiveKit Cloud dashboard | Yes |
-| `MURF_API_KEY` | [murf.ai/api/dashboard](https://murf.ai/api/dashboard) | Yes |
-| `DEEPGRAM_API_KEY` | [deepgram.com](https://deepgram.com) | Yes |
-| `GOOGLE_API_KEY` (or `OPENAI_API_KEY`) | Depends on LLM choice | Yes |
+| Variable                               | Where to get it                                        | Required |
+| -------------------------------------- | ------------------------------------------------------ | -------- |
+| `LIVEKIT_URL`                          | LiveKit Cloud dashboard                                | Yes      |
+| `LIVEKIT_API_KEY`                      | LiveKit Cloud dashboard                                | Yes      |
+| `LIVEKIT_API_SECRET`                   | LiveKit Cloud dashboard                                | Yes      |
+| `MURF_API_KEY`                         | [murf.ai/api/dashboard](https://murf.ai/api/dashboard) | Yes      |
+| `DEEPGRAM_API_KEY`                     | [deepgram.com](https://deepgram.com)                   | Yes      |
+| `GOOGLE_API_KEY` (or `OPENAI_API_KEY`) | Depends on LLM choice                                  | Yes      |
 
 ### Step 3: Install backend dependencies
 
@@ -204,10 +204,10 @@ See the Configuration section below for voice, STT, and LLM options.
 
 Edit the `tts=murf.TTS(...)` call in `backend/src/agent.py`. Set the `voice` argument to any Murf voice ID. Examples:
 
-- `en-US-natalie` — US English (female)
-- `en-UK-ruby` — UK English (female)
-- `en-US-miles` — US English (male)
-- `en-US-matthew` — US English (male, default in this starter)
+- `Anisha` — Indian English (female, default in this starter)
+- `Amara` — US English (female)
+- `Hazel` — UK English (female)
+- `Gordon` — US English (male)
 
 Browse all voices: [Murf Voice Library](https://murf.ai/api/docs/voices-styles/voice-library).
 
@@ -217,7 +217,7 @@ STT is configured in `backend/src/agent.py` in the `AgentSession(stt=...)` call.
 
 ### LLM (Gemini vs OpenAI)
 
-- **Gemini (default):** Set `GOOGLE_API_KEY` and use `llm=google.LLM(model="gemini-2.5-flash")` in `agent.py`.
+- **Gemini (default):** Set `GOOGLE_API_KEY` and use `llm=google.LLM(model="gemini-3.5-flash-lite")` in `agent.py`.
 - **OpenAI:** Set `OPENAI_API_KEY`, add the OpenAI plugin, and use the corresponding `llm=openai.LLM(...)` in `agent.py`.
 
 ### Audio format
