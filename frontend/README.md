@@ -73,13 +73,13 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
 
 Set `audioVisualizerType` in [`app-config.ts`](app-config.ts):
 
-| Type | Description | Key options |
-|------|-------------|-------------|
-| `bar` (default) | Vertical bars | `audioVisualizerBarCount` |
-| `grid` | Dot grid | `audioVisualizerGridRowCount`, `audioVisualizerGridColumnCount` |
-| `radial` | Circular bars | `audioVisualizerRadialBarCount`, `audioVisualizerRadialRadius` |
-| `wave` | Oscilloscope wave | `audioVisualizerWaveLineWidth` |
-| `aura` | Shader-based glow | `audioVisualizerAuraColorShift` |
+| Type            | Description       | Key options                                                     |
+| --------------- | ----------------- | --------------------------------------------------------------- |
+| `bar` (default) | Vertical bars     | `audioVisualizerBarCount`                                       |
+| `grid`          | Dot grid          | `audioVisualizerGridRowCount`, `audioVisualizerGridColumnCount` |
+| `radial`        | Circular bars     | `audioVisualizerRadialBarCount`, `audioVisualizerRadialRadius`  |
+| `wave`          | Oscilloscope wave | `audioVisualizerWaveLineWidth`                                  |
+| `aura`          | Shader-based glow | `audioVisualizerAuraColorShift`                                 |
 
 Use `audioVisualizerColor` / `audioVisualizerColorDark` to set accent colors across all modes.
 
@@ -125,6 +125,7 @@ frontend/
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/murf-ai/murf-livekit-starter&root-directory=frontend&env=LIVEKIT_URL,LIVEKIT_API_KEY,LIVEKIT_API_SECRET&project-name=murf-voice-agent&repository-name=murf-voice-agent)
 
 Set these environment variables:
+
 - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
 - `AGENT_NAME` (optional — for explicit agent dispatch)
 
