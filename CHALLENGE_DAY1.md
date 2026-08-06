@@ -64,7 +64,7 @@ Copy-Item backend\.env.example backend\.env.local
 Copy-Item frontend\.env.example frontend\.env.local
 ```
 
-Fill in real values for LiveKit, Murf, Deepgram, and Gemini or OpenAI. Do not
+Fill in real values for LiveKit, Murf, Deepgram, and OpenAI. Do not
 commit `.env.local`.
 
 For explicit agent dispatch, set this in `frontend\.env.local`:

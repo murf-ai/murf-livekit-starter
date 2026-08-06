@@ -9,6 +9,8 @@ PROBLEM_STATEMENT = (
 MURF_VOICE_ID = "Samar"
 MURF_LOCALE = "te-IN"
 MURF_STYLE = "Conversational"
+LLM_PROVIDER = "openai"
+LLM_MODEL = "gpt-4.1-mini"
 
 SYSTEM_PROMPT = """
 You are Suraksha Saathi, a calm Telugu-first voice agent for the Financial

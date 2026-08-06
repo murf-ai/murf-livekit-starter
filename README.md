@@ -21,7 +21,7 @@ by voice than reading an English warning screen.
 - Main language: Telugu.
 - Murf Falcon voice: `Samar`.
 - Murf locale: `te-IN`.
-- Transport/runtime: LiveKit Agents starter with Deepgram STT, Gemini LLM, and
+- Transport/runtime: LiveKit Agents starter with Deepgram STT, OpenAI GPT LLM, and
   Murf Falcon TTS.
 - Frontend: Next.js voice session UI branded for Suraksha Saathi.
 
@@ -33,7 +33,7 @@ setup notes, and known limits.
 ```mermaid
 flowchart LR
     A[User speaks Telugu or code mix] --> B[Deepgram STT]
-    B --> C[Gemini LLM with Suraksha Saathi prompt]
+    B --> C[OpenAI GPT LLM with Suraksha Saathi prompt]
     C --> D[Murf Falcon TTS: Samar, te-IN]
     D --> E[LiveKit audio session]
     E --> F[User hears spoken guidance]
@@ -50,7 +50,7 @@ Prerequisites:
 - LiveKit project
 - Murf API key
 - Deepgram API key
-- Google Gemini API key
+- OpenAI API key
 
 Create local environment files:
 

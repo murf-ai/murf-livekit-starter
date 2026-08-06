@@ -1,5 +1,7 @@
 from agent_config import (
     AGENT_NAME,
+    LLM_MODEL,
+    LLM_PROVIDER,
     MURF_LOCALE,
     MURF_STYLE,
     MURF_VOICE_ID,
@@ -27,3 +29,8 @@ def test_day1_financial_safety_boundaries_are_present() -> None:
 
     for term in required_terms:
         assert term in SYSTEM_PROMPT
+
+
+def test_day1_uses_gpt_instead_of_gemini() -> None:
+    assert LLM_PROVIDER == "openai"
+    assert LLM_MODEL == "gpt-4.1-mini"
