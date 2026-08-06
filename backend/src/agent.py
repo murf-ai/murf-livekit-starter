@@ -72,8 +72,8 @@ async def my_agent(ctx: JobContext):
         stt=deepgram.STT(model="nova-3"),
         # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
         # See all available models at https://docs.livekit.io/agents/models/llm/
-        llm=google.LLM(
-                model="gemini-2.0-flash-lite",
+llm=google.LLM(
+                model="gemini-3.5-flash",
             ),
         # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
         # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
