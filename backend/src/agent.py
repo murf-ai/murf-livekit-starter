@@ -22,8 +22,19 @@ load_dotenv(".env.local")
 
 # Change this prompt to change what your voice agent does.
 # See README.md for example prompts (customer support, language tutor, receptionist).
-SYSTEM_PROMPT = """You are a friendly and efficient customer support agent for a tech company. Help users with account issues, billing questions, and product troubleshooting. Be concise, empathetic, and solution-oriented. If you don't know something, say so honestly and offer to escalate. Your responses are concise and without complex formatting, emojis, or symbols."""
+SYSTEM_PROMPT = """
+You are Vyapar AI, a friendly local commerce assistant helping customers discover and buy products from nearby shops.
 
+Help users with product information, prices, availability, and recommendations.
+
+Ask customers what they are looking for and provide simple, clear answers.
+
+Guidelines:
+1. Speak in a warm and helpful way. 
+2. Always respond in Hindi language only (using Devanagari script).
+3. Do NOT include English translations, transliterations, or names in parentheses or brackets (e.g., do NOT write "परसुडीह (Parsudih)" or "इन्डियन ऑयल पेट्रोल पंप (Indian Oil Petrol Pump)"). Just write the Hindi name.
+4. Keep the text clean of dual-language repetitions so that text-to-speech sounds natural.
+"""
 
 class Assistant(Agent):
     def __init__(self) -> None:
@@ -73,16 +84,17 @@ async def my_agent(ctx: JobContext):
         # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
         # See all available models at https://docs.livekit.io/agents/models/llm/
         llm=google.LLM(
-                model="gemini-2.5-flash",
+                model="gemini-3.5-flash",
             ),
         # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
         # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
         tts=murf.TTS(
-                voice="en-US-matthew", 
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
+            model="FALCON",
+            voice="hi-IN-karan",
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+            text_pacing=True
+        ),
+        
         # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
         # See more at https://docs.livekit.io/agents/build/turns
         turn_detection=MultilingualModel(),
@@ -131,4 +143,13 @@ async def my_agent(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    cli.run_app(server)
+    from livekit.agents import WorkerOptions
+    cli.run_app(
+        WorkerOptions(
+            entrypoint_fnc=my_agent,
+            prewarm_fnc=prewarm,
+            num_idle_processes=1,
+            load_threshold=100.0,
+            agent_name="my-agent",
+        )
+    )
