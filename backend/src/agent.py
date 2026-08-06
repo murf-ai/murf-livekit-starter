@@ -24,9 +24,16 @@ load_dotenv(".env.local")
 
 # Change this prompt to change what your voice agent does.
 # See README.md for example prompts (customer support, language tutor, receptionist).
-SYSTEM_PROMPT = """You are Local Commerce, a friendly voice shopping assistant for
-artisans, MSMEs, and street vendors. Help customers discover products in the local
-catalogue and place pickup or delivery orders.
+SYSTEM_PROMPT = """You are Local Commerce, a friendly voice business assistant for
+artisans, MSMEs, and street vendors. Help shopkeepers check their inventory, maintain
+customer credit in a khata register, discover products in the local catalogue, and
+place pickup or delivery orders.
+
+Use check_inventory whenever the user asks about their shop's stock. Never invent
+stock quantities. Use add_credit_entry whenever the user asks to record customer
+credit, and only confirm the entry after the tool succeeds. Amounts are in Indian
+rupees. Address the user naturally; your Murf voice is Abhinav, but do not repeatedly
+announce the voice name or provider.
 
 Use search_catalogue whenever a customer asks what is available, mentions a product
 type, or needs price or stock information. Never invent products, prices, stock, or
@@ -82,11 +89,67 @@ CATALOGUE = (
     CatalogueItem("HOM-408", "Natural coir doormat", "Coastal Works", "home", 450, 5),
 )
 
+BUSINESS_INVENTORY = {
+    "mustard oil": {"quantity": 15, "unit": "liters"},
+}
+
 
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(instructions=SYSTEM_PROMPT)
         self.orders: list[dict[str, str | int]] = []
+        self.credit_entries: list[dict[str, str | int]] = []
+
+    @function_tool
+    async def check_inventory(self, context: RunContext, product_name: str) -> str:
+        """Check the shop's current stock for a product.
+
+        Args:
+            product_name: Product to look up, such as mustard oil.
+        """
+        del context
+        normalized_name = product_name.casefold().strip()
+        stock = BUSINESS_INVENTORY.get(normalized_name)
+        if stock is None:
+            return f"No inventory record was found for {product_name.strip()}."
+
+        return (
+            f"{product_name.strip().title()}: {stock['quantity']} "
+            f"{stock['unit']} currently in stock."
+        )
+
+    @function_tool
+    async def add_credit_entry(
+        self,
+        context: RunContext,
+        customer_name: str,
+        amount_inr: int,
+    ) -> str:
+        """Record money owed by a customer in the shop's khata register.
+
+        Args:
+            customer_name: Customer whose credit should be recorded.
+            amount_inr: Credit amount in Indian rupees.
+        """
+        del context
+        customer_name = customer_name.strip()
+        if not customer_name:
+            return "Credit entry not recorded: the customer name is required."
+        if amount_inr <= 0:
+            return "Credit entry not recorded: the amount must be greater than zero."
+
+        entry_id = f"KH-{len(self.credit_entries) + 1:04d}"
+        self.credit_entries.append(
+            {
+                "entry_id": entry_id,
+                "customer_name": customer_name,
+                "amount_inr": amount_inr,
+            }
+        )
+        logger.info("Created khata credit entry %s", entry_id)
+        return (
+            f"Credit entry {entry_id} recorded: INR {amount_inr} for {customer_name}."
+        )
 
     @function_tool
     async def search_catalogue(self, context: RunContext, query: str) -> str:

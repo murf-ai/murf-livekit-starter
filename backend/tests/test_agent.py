@@ -64,6 +64,68 @@ async def test_collects_order_details() -> None:
 
 
 @pytest.mark.asyncio
+async def test_reports_mustard_oil_stock() -> None:
+    """The assistant grounds stock answers in the business inventory tool."""
+    async with (
+        _llm() as llm,
+        AgentSession(llm=llm) as session,
+    ):
+        await session.start(Assistant())
+
+        result = await session.run(
+            user_input=(
+                "Hello Abhinav! Can you check if we have enough stock of mustard "
+                "oil for today's sales?"
+            )
+        )
+
+        result.expect.contains_function_call(
+            name="check_inventory", arguments={"product_name": "mustard oil"}
+        )
+        await (
+            result.expect[-1]
+            .is_message(role="assistant")
+            .judge(
+                llm,
+                intent="""
+                Says that 15 liters of mustard oil are currently in stock. It may
+                offer to record a supplier order or a customer credit entry.
+                """,
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_adds_credit_entry() -> None:
+    """The assistant records the requested customer credit in the khata."""
+    async with (
+        _llm() as llm,
+        AgentSession(llm=llm) as session,
+    ):
+        await session.start(Assistant())
+
+        result = await session.run(
+            user_input="Add a quick credit entry of 250 rupees for Ramesh Kaka."
+        )
+
+        result.expect.contains_function_call(
+            name="add_credit_entry",
+            arguments={"customer_name": "Ramesh Kaka", "amount_inr": 250},
+        )
+        await (
+            result.expect[-1]
+            .is_message(role="assistant")
+            .judge(
+                llm,
+                intent="""
+                Confirms that a credit entry of INR 250 for Ramesh Kaka was
+                recorded in the khata register.
+                """,
+            )
+        )
+
+
+@pytest.mark.asyncio
 async def test_grounding() -> None:
     """Evaluation of the agent's ability to refuse to answer when it doesn't know something."""
     async with (
