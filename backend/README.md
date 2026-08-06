@@ -152,8 +152,11 @@ Some voice options:
 | Voice ID | Description                      |
 | -------- | -------------------------------- |
 | `Anisha` | Indian English, female (default) |
+| `Pooja`  | Indian English, female           |
+| `Samar`  | Indian English, male             |
 | `Amara`  | US English, female               |
 | `Hazel`  | UK English, female               |
+| `Bertie` | UK English, male                 |
 | `Gordon` | US English, male                 |
 
 Browse all 150+ voices: [Murf Voice Library](https://murf.ai/api/docs/voices-styles/voice-library).

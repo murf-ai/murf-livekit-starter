@@ -205,9 +205,12 @@ See the Configuration section below for voice, STT, and LLM options.
 Edit the `tts=murf.TTS(...)` call in `backend/src/agent.py`. Set the `voice` argument to any Murf voice ID. Examples:
 
 - `Anisha` — Indian English (female, default in this starter)
+- `Pooja` — Indian English (female)
+- `Samar` — Indian English (male)
 - `Amara` — US English (female)
-- `Hazel` — UK English (female)
 - `Gordon` — US English (male)
+- `Hazel` — UK English (female)
+- `Bertie` — UK English (male)
 
 Browse all voices: [Murf Voice Library](https://murf.ai/api/docs/voices-styles/voice-library).
 
