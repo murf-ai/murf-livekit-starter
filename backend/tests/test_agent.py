@@ -10,7 +10,7 @@ def _llm() -> llm.LLM:
 
 @pytest.mark.asyncio
 async def test_offers_assistance() -> None:
-    """Evaluation of the agent's friendly nature."""
+    """The greeting introduces the local-commerce capabilities."""
     async with (
         _llm() as llm,
         AgentSession(llm=llm) as session,
@@ -27,17 +27,102 @@ async def test_offers_assistance() -> None:
             .judge(
                 llm,
                 intent="""
-                Greets the user in a friendly manner.
-
-                Optional context that may or may not be included:
-                - Offer of assistance with any request the user may have
-                - Other small talk or chit chat is acceptable, so long as it is friendly and not too intrusive
+                Greets the user in a friendly manner and offers help browsing
+                local products or placing an order.
                 """,
             )
         )
 
         # Ensures there are no function calls or other unexpected events
         result.expect.no_more_events()
+
+
+@pytest.mark.asyncio
+async def test_collects_order_details() -> None:
+    """The assistant asks for missing details instead of inventing an order."""
+    async with (
+        _llm() as llm,
+        AgentSession(llm=llm) as session,
+    ):
+        await session.start(Assistant())
+
+        result = await session.run(user_input="I want to place an order")
+
+        await (
+            result.expect.next_event()
+            .is_message(role="assistant")
+            .judge(
+                llm,
+                intent="""
+                Asks for at least one detail needed to continue, such as the
+                product, quantity, customer name, or delivery preference. It
+                must not claim that an order has already been confirmed.
+                """,
+            )
+        )
+        result.expect.no_more_events()
+
+
+@pytest.mark.asyncio
+async def test_reports_mustard_oil_stock() -> None:
+    """The assistant grounds stock answers in the business inventory tool."""
+    async with (
+        _llm() as llm,
+        AgentSession(llm=llm) as session,
+    ):
+        await session.start(Assistant())
+
+        result = await session.run(
+            user_input=(
+                "Hello Abhinav! Can you check if we have enough stock of mustard "
+                "oil for today's sales?"
+            )
+        )
+
+        result.expect.contains_function_call(
+            name="check_inventory", arguments={"product_name": "mustard oil"}
+        )
+        await (
+            result.expect[-1]
+            .is_message(role="assistant")
+            .judge(
+                llm,
+                intent="""
+                Says that 15 liters of mustard oil are currently in stock. It may
+                offer to record a supplier order or a customer credit entry.
+                """,
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_adds_credit_entry() -> None:
+    """The assistant records the requested customer credit in the khata."""
+    async with (
+        _llm() as llm,
+        AgentSession(llm=llm) as session,
+    ):
+        await session.start(Assistant())
+
+        result = await session.run(
+            user_input="Add a quick credit entry of 250 rupees for Ramesh Kaka."
+        )
+
+        result.expect.contains_function_call(
+            name="add_credit_entry",
+            arguments={"customer_name": "Ramesh Kaka", "amount_inr": 250},
+        )
+        await (
+            result.expect[-1]
+            .is_message(role="assistant")
+            .judge(
+                llm,
+                intent="""
+                Confirms that a credit entry of INR 250 for Ramesh Kaka was
+                recorded in the khata register.
+                """,
+            )
+        )
 
 
 @pytest.mark.asyncio

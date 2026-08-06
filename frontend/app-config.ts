@@ -33,20 +33,21 @@ export interface AppConfig {
 }
 
 export const APP_CONFIG_DEFAULTS: AppConfig = {
-  companyName: 'Murf AI',
-  pageTitle: 'Voice Agent Starter',
-  pageDescription: 'A voice agent powered by Murf Falcon — the fastest TTS API',
+  companyName: 'Local Commerce',
+  pageTitle: 'Local Commerce | Shop from local sellers',
+  pageDescription:
+    'Browse local catalogues and place orders with artisans, MSMEs, and street vendors by voice.',
 
   supportsChatInput: true,
-  supportsVideoInput: true,
-  supportsScreenShare: true,
+  supportsVideoInput: false,
+  supportsScreenShare: false,
   isPreConnectBufferEnabled: true,
 
   logo: '/murf-logo.svg',
-  accent: '#6366F1',
+  accent: '#C2410C',
   logoDark: '/murf-logo-dark.svg',
-  accentDark: '#818cf8',
-  startButtonText: 'Start talking',
+  accentDark: '#FB923C',
+  startButtonText: 'Browse local products',
 
   // optional: audio visualization configuration
   // audioVisualizerType: 'bar',

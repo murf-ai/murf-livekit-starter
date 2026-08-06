@@ -34,7 +34,12 @@ export const WelcomeView = ({
         <WelcomeImage />
 
         <p className="text-foreground max-w-prose pt-1 leading-6 font-medium">
-          Chat live with your voice AI agent
+          Discover local products. Order by voice.
+        </p>
+
+        <p className="text-muted-foreground mt-2 max-w-md text-sm leading-6 text-pretty">
+          Browse catalogues from artisans, MSMEs, and street vendors, then place a
+          pickup or delivery order in a natural conversation.
         </p>
 
         <Button
@@ -48,16 +53,7 @@ export const WelcomeView = ({
 
       <div className="fixed bottom-5 left-0 flex w-full items-center justify-center">
         <p className="text-muted-foreground max-w-prose pt-1 text-xs leading-5 font-normal text-pretty md:text-sm">
-          Need help getting set up? Check out the{' '}
-          <a
-            target="_blank"
-            rel="noopener noreferrer"
-            href="https://docs.livekit.io/agents/start/voice-ai/"
-            className="underline"
-          >
-            Voice AI quickstart
-          </a>
-          .
+          Local sellers confirm availability, fulfilment, and payment after you order.
         </p>
       </div>
     </div>
