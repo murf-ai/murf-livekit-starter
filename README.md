@@ -1,7 +1,7 @@
 # Suraksha Saathi - Telugu UPI Fraud Awareness Agent
 
-Day 1 build for Murf AI's **10 Days of Voice Agents - #VoiceForBharat
-Edition**.
+Day 1 and Day 2 build for Murf AI's **10 Days of Voice Agents -
+#VoiceForBharat Edition**.
 
 Suraksha Saathi is a Telugu-first voice agent for the **Financial Services**
 track. It helps first-time digital payment users understand UPI fraud risk,
@@ -14,7 +14,7 @@ traps move faster than many text-heavy safety campaigns. A spoken Telugu helper
 can reach people who are more comfortable explaining a stressful payment issue
 by voice than reading an English warning screen.
 
-## Day 1 Build
+## Challenge Build
 
 - Track: Financial Services.
 - Agent name: `suraksha-saathi`.
@@ -27,6 +27,12 @@ by voice than reading an English warning screen.
 
 See [CHALLENGE_DAY1.md](./CHALLENGE_DAY1.md) for the demo script, voice choice,
 setup notes, and known limits.
+
+See [CHALLENGE_DAY2.md](./CHALLENGE_DAY2.md) for the call objectives, guardrails,
+code-mixed demo script, first-turn greeting, and submission checklist.
+
+See [RED_TEAM.md](./RED_TEAM.md) for ten guardrail-breaking prompts and expected
+safe behavior.
 
 ## Architecture
 
@@ -91,7 +97,7 @@ No-credential checks:
 ```powershell
 cd backend
 .venv\Scripts\ruff.exe check src tests
-$env:PYTHONPATH='src'; .venv\Scripts\pytest.exe tests\test_day1_config.py -q
+$env:PYTHONPATH='src'; .venv\Scripts\pytest.exe tests -q
 ```
 
 Live verification still requires real LiveKit, Murf, Deepgram, and LLM keys.
