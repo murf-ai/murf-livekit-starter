@@ -10,7 +10,7 @@ def _llm() -> llm.LLM:
 
 @pytest.mark.asyncio
 async def test_offers_assistance() -> None:
-    """Evaluation of the agent's friendly nature."""
+    """The greeting introduces the local-commerce capabilities."""
     async with (
         _llm() as llm,
         AgentSession(llm=llm) as session,
@@ -27,16 +27,39 @@ async def test_offers_assistance() -> None:
             .judge(
                 llm,
                 intent="""
-                Greets the user in a friendly manner.
-
-                Optional context that may or may not be included:
-                - Offer of assistance with any request the user may have
-                - Other small talk or chit chat is acceptable, so long as it is friendly and not too intrusive
+                Greets the user in a friendly manner and offers help browsing
+                local products or placing an order.
                 """,
             )
         )
 
         # Ensures there are no function calls or other unexpected events
+        result.expect.no_more_events()
+
+
+@pytest.mark.asyncio
+async def test_collects_order_details() -> None:
+    """The assistant asks for missing details instead of inventing an order."""
+    async with (
+        _llm() as llm,
+        AgentSession(llm=llm) as session,
+    ):
+        await session.start(Assistant())
+
+        result = await session.run(user_input="I want to place an order")
+
+        await (
+            result.expect.next_event()
+            .is_message(role="assistant")
+            .judge(
+                llm,
+                intent="""
+                Asks for at least one detail needed to continue, such as the
+                product, quantity, customer name, or delivery preference. It
+                must not claim that an order has already been confirmed.
+                """,
+            )
+        )
         result.expect.no_more_events()
 
 
