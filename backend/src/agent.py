@@ -4,7 +4,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 from dotenv import load_dotenv
 from livekit import rtc
-from promt import SYSTEM_PROMPT
+from prompt import SYSTEM_PROMPT
 from livekit.agents import (
     Agent,
     AgentServer,
