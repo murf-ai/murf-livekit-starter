@@ -9,7 +9,7 @@ description = "Voice AI agent starter powered by Murf Falcon TTS and LiveKit Age
 requires-python = ">=3.10, <3.15"
 
 dependencies = [
-    "livekit-agents[deepgram,google,silero,turn-detector]~=1.4",
+    "livekit-agents[deepgram,google,openai,silero,turn-detector]~=1.4",
     "livekit-murf>=0.1.1",
     "livekit-plugins-noise-cancellation~=0.2",
     "python-dotenv",

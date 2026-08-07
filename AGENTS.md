@@ -95,7 +95,7 @@ pnpm dev
 ### Environment variables
 Copy `frontend/.env.example` to `frontend/.env.local`. Required:
 - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`
-- `AGENT_NAME` (optional — set to `my-agent` for explicit dispatch)
+- `AGENT_NAME` (optional — set to `pooja-voice` for explicit dispatch)
 
 ### Linting
 ```bash
