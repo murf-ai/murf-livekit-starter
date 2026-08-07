@@ -5,6 +5,7 @@ from agent_config import (
     GUARDRAILS,
     KNOWLEDGE_BOUNDARIES,
     LANGUAGE_POLICY,
+    STT_LANGUAGE,
     SYSTEM_PROMPT,
 )
 
@@ -32,6 +33,7 @@ def test_day2_guardrails_cover_refusals_never_claims_and_escalation() -> None:
 
 
 def test_day2_language_policy_requires_code_mix_mirroring() -> None:
+    assert STT_LANGUAGE == "multi"
     assert "Telugu" in LANGUAGE_POLICY
     assert "Hindi" in LANGUAGE_POLICY
     assert "English" in LANGUAGE_POLICY

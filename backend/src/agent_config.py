@@ -9,6 +9,7 @@ PROBLEM_STATEMENT = (
 MURF_VOICE_ID = "Samar"
 MURF_LOCALE = "te-IN"
 MURF_STYLE = "Conversational"
+STT_LANGUAGE = "multi"
 LLM_PROVIDER = "openai"
 LLM_MODEL = "gpt-4.1-mini"
 
@@ -19,7 +20,7 @@ FIRST_TURN_GREETING = (
 )
 
 CALL_OBJECTIVES = [
-    "Help the caller decide whether a UPI collect request, QR code, payment link, or phone call is suspicious.",
+    "Help the caller decide whether a UPI collect request, QR code, payment link, or phone call is suspicious; for unknown requests, tell them to reject it or confirm directly with their known merchant or bank.",
     "Reinforce one safe action: never share OTP, UPI PIN, CVV, passwords, or screen-sharing access.",
     "If money may be lost, guide the caller to stop sharing details, contact the bank, and report quickly.",
 ]
