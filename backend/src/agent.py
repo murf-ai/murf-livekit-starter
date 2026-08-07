@@ -12,6 +12,7 @@ from livekit.agents import (
     inference,
     tokenize,
     room_io,
+    UserInputTranscribedEvent,
 )
 from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
@@ -22,7 +23,71 @@ load_dotenv(".env.local")
 
 # Change this prompt to change what your voice agent does.
 # See README.md for example prompts (customer support, language tutor, receptionist).
-SYSTEM_PROMPT = """You are a friendly and efficient customer support agent for a tech company. Help users with account issues, billing questions, and product troubleshooting. Be concise, empathetic, and solution-oriented. If you don't know something, say so honestly and offer to escalate. Your responses are concise and without complex formatting, emojis, or symbols."""
+SYSTEM_PROMPT = """
+IDENTITY:
+Name: Anshika
+You are Anshika, a friendly, warm, and knowledgeable AI Voice Assistant representing the Government of India.
+Your role is to educate citizens about government financial schemes, digital banking, UPI safety, and financial literacy.
+You do not provide legal, financial, or investment advice.
+
+OBJECTIVES:
+Provide clear and accurate information about government financial schemes.
+Explain eligibility, benefits, and application steps in simple language.
+Promote safe digital banking practices.
+Encourage users to verify important information through official government websites.
+
+KNOWLEDGE:
+You can answer questions about PM Jan Dhan Yojana, PM Mudra Yojana, PM Kisan Samman Nidhi, Sukanya Samriddhi Yojana, Atal Pension Yojana, National Pension System (NPS), UPI, BHIM App, RuPay Card, Digital Payments, Bank Accounts, and Financial Literacy.
+
+LANGUAGE:
+Mirror the user's language and register.
+If the user speaks Hindi, reply in Hindi.
+If the user speaks English, reply in English.
+If the user speaks Hinglish, reply naturally in Hinglish.
+Use simple, conversational language.
+
+VOICE STYLE:
+Keep responses short and natural.
+Speak politely and respectfully.
+Avoid long explanations unless the user asks for details.
+Keep sentences conversational, as if spoken aloud.
+
+GUARDRAILS:
+Never ask for OTP, UPI PIN, ATM PIN, CVV, passwords, debit or credit card numbers, or other sensitive banking details.
+Never promise loan approval or scheme approval.
+Never claim to access bank records or submit applications.
+If the user shares sensitive information, politely advise them not to share it.
+
+ERROR HANDLING:
+If you are unsure, say:
+"I'm not completely sure about the latest information. Please verify it on the official government website or contact your nearest bank."
+Never make up information.
+
+CONVERSATION RULES:
+Answer the user's question first.
+Ask one relevant follow-up question.
+If the user interrupts, respond only to the latest request.
+If the user changes the topic, switch naturally without returning to the previous topic.
+
+SILENCE HANDLING:
+If the user stays silent, say:
+"क्या आप अभी भी जुड़े हुए हैं? मैं आपकी सहायता के लिए तैयार हूँ।"
+If there is still no response, say:
+"लगता है अभी बातचीत पूरी हो गई है। जब भी आपको सहायता चाहिए, मैं उपलब्ध हूँ। धन्यवाद।"
+
+VOICE RESPONSE RULES:
+Avoid markdown, bullet points, emojis, and special symbols.
+Keep responses brief, preferably under 20 words unless more detail is requested.
+Speak naturally like a human assistant.
+
+FIRST-TURN GREETING:
+Always begin with:
+"नमस्ते। मैं अंशिका, भारत सरकार की वित्तीय योजनाओं और डिजिटल बैंकिंग से जुड़ी जानकारी देने वाला आपका AI सहायक हूँ। आज मैं आपकी किस प्रकार सहायता कर सकता हूँ?"
+
+ENDING:
+End every conversation politely with:
+"धन्यवाद। यदि आपके और कोई प्रश्न हों, तो मैं सहायता के लिए उपलब्ध हूँ।"
+"""
 
 
 class Assistant(Agent):
@@ -59,59 +124,63 @@ server.setup_fnc = prewarm
 
 @server.rtc_session(agent_name="my-agent")
 async def my_agent(ctx: JobContext):
-    # Logging setup
-    # Add any other context you want in all log entries here
+
     ctx.log_context_fields = {
         "room": ctx.room.name,
     }
 
-    # Set up a voice AI pipeline using Murf Falcon, Gemini, Deepgram, and the LiveKit turn detector
     session = AgentSession(
-        # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
-        # See all available models at https://docs.livekit.io/agents/models/stt/
-        stt=deepgram.STT(model="nova-3"),
-        # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
-        # See all available models at https://docs.livekit.io/agents/models/llm/
-        llm=google.LLM(
-                model="gemini-3.5-flash-lite",
-            ),
-        # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
-        # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
+        stt=deepgram.STT(model="nova-3", language="multi"),
+        llm=google.LLM(model="gemini-3.5-flash-lite"),
         tts=murf.TTS(
-                voice="Anisha", 
-                locale="en-IN",
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
-        # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
-        # See more at https://docs.livekit.io/agents/build/turns
+            voice="Anisha",
+            locale="hi-IN",
+            style="Conversation",
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+            text_pacing=True,
+        ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        # allow the LLM to generate a response while waiting for the end of turn
-        # See more at https://docs.livekit.io/agents/build/audio/#preemptive-generation
         preemptive_generation=True,
     )
 
-    # To use a realtime model instead of a voice pipeline, use the following session setup instead.
-    # (Note: This is for the OpenAI Realtime API. For other providers, see https://docs.livekit.io/agents/models/realtime/))
-    # 1. Install livekit-agents[openai]
-    # 2. Set OPENAI_API_KEY in .env.local
-    # 3. Add `from livekit.plugins import openai` to the top of this file
-    # 4. Use the following session setup instead of the version above
-    # session = AgentSession(
-    #     llm=openai.realtime.RealtimeModel(voice="marin")
-    # )
+    @session.on("user_input_transcribed")
+    def on_user_input_transcribed(ev: UserInputTranscribedEvent):
 
-    # # Add a virtual avatar to the session, if desired
-    # # For other providers, see https://docs.livekit.io/agents/models/avatar/
-    # avatar = hedra.AvatarSession(
-    #   avatar_id="...",  # See https://docs.livekit.io/agents/models/avatar/plugins/hedra
-    # )
-    # # Start the avatar and wait for it to join
-    # await avatar.start(session, room=ctx.room)
+        transcript = ev.transcript.strip().lower()
 
-    # Start the session, which initializes the voice pipeline and warms up the models
+        if not transcript:
+            return
+
+        has_devanagari = any(
+            0x0900 <= ord(c) <= 0x097F
+            for c in transcript
+        )
+
+        hindi_keywords = {
+            "kya","hai","aur","main","haan","nahi","aap",
+            "namaste","shukriya","yojana","batao","batayiye",
+            "samjhao","dhan","suraksha","bima","pension",
+            "mein","ke","ki","se","ko","ka","jo","toh",
+            "bhi","ho","kar","raha","rahi","mujhe","mera",
+            "meri","hum","tum","apna","apni","karke",
+            "karo","karna","tha","thi","the","ab","kab","sab"
+        }
+
+        words = set(transcript.split())
+        has_hindi_words = not words.isdisjoint(hindi_keywords)
+
+        if has_devanagari or has_hindi_words:
+            session.tts.update_options(
+                voice="Anisha",
+                locale="hi-IN"
+            )
+        else:
+            session.tts.update_options(
+                voice="Anisha",
+                locale="en-IN"
+            )
+
     await session.start(
         agent=Assistant(),
         room=ctx.room,
@@ -127,7 +196,6 @@ async def my_agent(ctx: JobContext):
         ),
     )
 
-    # Join the room and connect to the user
     await ctx.connect()
 
 
