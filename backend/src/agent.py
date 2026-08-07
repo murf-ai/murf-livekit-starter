@@ -24,9 +24,10 @@ logger = logging.getLogger("health-access-agent")
 load_dotenv(".env.local")
 
 try:
-    from .prompt import SYSTEM_PROMPT
+    from .prompt import FIRST_GREETING, SYSTEM_PROMPT
 except ImportError:
-    from prompt import SYSTEM_PROMPT
+    from prompt import FIRST_GREETING, SYSTEM_PROMPT
+
 
 
 
@@ -490,6 +491,34 @@ async def my_agent(ctx: JobContext):
         preemptive_generation=True,
     )
 
+    hindi_keywords = {
+        "namaste", "namaskar", "kya", "hai", "haan", "nahi",
+        "main", "mera", "meri", "mujhe", "aap", "tum",
+        "doctor", "hospital", "appointment", "dawai",
+        "bukhar", "khansi", "sardi", "dard", "madad"
+    }
+
+    @session.on("user_input_transcribed")
+    def on_user_input_transcribed(ev):
+        transcript = ev.transcript.strip().lower()
+
+        has_devanagari = any(
+            0x0900 <= ord(c) <= 0x097F
+            for c in transcript
+        )
+
+        words = set(transcript.split())
+        has_hindi_words = not words.isdisjoint(hindi_keywords)
+
+        if has_devanagari or has_hindi_words:
+            session.tts.update_options(
+                voice="hi-IN-anisha"
+            )
+        else:
+            session.tts.update_options(
+                voice="en-IN-anisha"
+            )
+
     await session.start(
         agent=Assistant(),
         room=ctx.room,
@@ -506,6 +535,7 @@ async def my_agent(ctx: JobContext):
     )
 
     await ctx.connect()
+
 
 
 if __name__ == "__main__":
