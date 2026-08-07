@@ -1,4 +1,5 @@
 import logging
+import re
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -8,42 +9,226 @@ from livekit.agents import (
     AgentSession,
     JobContext,
     JobProcess,
+    UserInputTranscribedEvent,
     cli,
+    llm,
     room_io,
     tokenize,
 )
 from livekit.plugins import deepgram, google, murf, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
+from prompt import SYSTEM_PROMPT
+
 logger = logging.getLogger("agent")
 
 load_dotenv(".env.local")
 
-# Change this prompt to change what your voice agent does.
-# See README.md for example prompts (customer support, language tutor, receptionist).
-SYSTEM_PROMPT = """You are a friendly and efficient customer support agent for a tech company. Help users with account issues, billing questions, and product troubleshooting. Be concise, empathetic, and solution-oriented. If you don't know something, say so honestly and offer to escalate. Your responses are concise and without complex formatting, emojis, or symbols."""
+# Spoken once when the session starts — not on every user turn.
+FIRST_GREETING = (
+    "नमस्ते! मैं जन सहाय हूँ। मुझे अपनी फाइनेंशियल दोस्त समझिए। "
+    "मैं सरकारी वित्तीय योजनाओं और सुरक्षित डिजिटल बैंकिंग के बारे में आपकी मदद कर सकता हूँ। "
+    "बताइए, आज मैं आपकी कैसे मदद करूँ?"
+)
+
+# Strong romanized Hindi / Hinglish markers (avoid English-only words).
+HINDI_KEYWORDS = {
+    "yojana",
+    "yojna",
+    "batao",
+    "bataye",
+    "bataiye",
+    "samjhao",
+    "samjhaao",
+    "samjha",
+    "dhan",
+    "suraksha",
+    "bima",
+    "mujhe",
+    "mera",
+    "meri",
+    "mere",
+    "apna",
+    "apni",
+    "apne",
+    "namaste",
+    "namaskar",
+    "kaise",
+    "kaisa",
+    "kaisi",
+    "kya",
+    "kyun",
+    "kyu",
+    "hai",
+    "hain",
+    "nahi",
+    "nahin",
+    "mat",
+    "madad",
+    "sahayata",
+    "khata",
+    "kripya",
+    "dhanyavad",
+    "shukriya",
+    "accha",
+    "achha",
+    "theek",
+    "thik",
+    "bilkul",
+    "zaroor",
+    "jaroor",
+    "chahiye",
+    "chaahiye",
+    "karo",
+    "kariye",
+    "bata",
+    "suniye",
+    "sunao",
+    "aap",
+    "aapka",
+    "aapki",
+}
+
+DEVANAGARI_RE = re.compile(r"[\u0900-\u097F]")
+
+# Compact language directives — kept short to avoid instruction thrash.
+REPLY_LANG_HI = (
+    "\n\nLANGUAGE NOW: User spoke Hindi/Hinglish. Reply in Hindi only. "
+    "Do not use full English. Match this turn, not older English turns.\n"
+    "SAFETY: Never ask for OTP, PIN, or account number. "
+    "Never promise scheme approval.\n"
+)
+
+REPLY_LANG_EN = (
+    "\n\nLANGUAGE NOW: User spoke English. Reply in English only. "
+    "No Hindi or Devanagari, even if your greeting was Hindi.\n"
+    "SAFETY: Never ask for OTP, PIN, or account number. "
+    "Never promise scheme approval.\n"
+)
+
+VOICE_HI = "hi-IN-anisha"
+VOICE_EN = "en-IN-anisha"
+
+# Marker used only inside chat context; stripped if re-seen so locks never stack.
+_LANG_LOCK_PREFIX = "[[LANG_LOCK]]"
+
+
+def detect_reply_language(transcript: str, stt_language: str | None = None) -> str:
+    """Return 'hi' or 'en' from user transcript + optional STT language tag."""
+    text = (transcript or "").strip()
+    if not text:
+        return "hi"
+
+    if DEVANAGARI_RE.search(text):
+        return "hi"
+
+    lang = (stt_language or "").lower().replace("_", "-")
+    words = set(re.findall(r"[a-zA-Z']+", text.lower()))
+    has_hindi_kw = not words.isdisjoint(HINDI_KEYWORDS)
+
+    if lang.startswith("en") and not has_hindi_kw:
+        return "en"
+    if lang.startswith("hi"):
+        return "hi"
+    if has_hindi_kw:
+        return "hi"
+    if lang.startswith("en"):
+        return "en"
+    if text.isascii() and not has_hindi_kw:
+        return "en"
+    return "hi"
+
+
+def _strip_lang_locks(turn_ctx: llm.ChatContext) -> None:
+    """Remove previous language-lock system messages so they never accumulate."""
+    items = getattr(turn_ctx, "items", None)
+    if not items:
+        return
+    keep = []
+    for item in list(items):
+        if (
+            getattr(item, "type", None) == "message"
+            and getattr(item, "role", None) == "system"
+        ):
+            text = item.text_content or ""
+            if text.startswith(_LANG_LOCK_PREFIX):
+                continue
+        keep.append(item)
+    if len(keep) != len(items):
+        items[:] = keep
 
 
 class Assistant(Agent):
     def __init__(self) -> None:
-        super().__init__(instructions=SYSTEM_PROMPT)
+        super().__init__(
+            instructions=SYSTEM_PROMPT + REPLY_LANG_HI,
+            # Let the user barge in freely so the agent does not "get stuck" talking.
+        )
+        self._reply_lang = "hi"
+        self._last_stt_language: str | None = None
+        self._voice = VOICE_HI
 
-    # To add tools, use the @function_tool decorator.
-    # Here's an example that adds a simple weather tool.
-    # You also have to add `from livekit.agents import function_tool, RunContext` to the top of this file
-    # @function_tool
-    # async def lookup_weather(self, context: RunContext, location: str):
-    #     """Use this tool to look up current weather information in the given location.
-    #
-    #     If the location is not supported by the weather service, the tool will indicate this. You must tell the user the location's weather is unavailable.
-    #
-    #     Args:
-    #         location: The location to look up weather information for (e.g. city name)
-    #     """
-    #
-    #     logger.info(f"Looking up weather for {location}")
-    #
-    #     return "sunny with a temperature of 70 degrees."
+    def note_stt_language(self, language: str | None, transcript: str) -> None:
+        if language:
+            self._last_stt_language = str(language)
+
+    async def apply_language(
+        self, transcript: str, stt_language: str | None = None
+    ) -> str:
+        lang_hint = stt_language or self._last_stt_language
+        reply_lang = detect_reply_language(transcript, lang_hint)
+        logger.info(
+            "Language detect: lang=%s stt=%s text=%r",
+            reply_lang,
+            lang_hint,
+            (transcript or "")[:120],
+        )
+
+        # Only refresh instructions / voice when language actually changes.
+        # Constant updates race the LLM/TTS and can stall or double-speak.
+        if reply_lang != self._reply_lang:
+            self._reply_lang = reply_lang
+            directive = REPLY_LANG_HI if reply_lang == "hi" else REPLY_LANG_EN
+            await self.update_instructions(SYSTEM_PROMPT + directive)
+            logger.info("Updated instructions for language=%s", reply_lang)
+
+            voice = VOICE_HI if reply_lang == "hi" else VOICE_EN
+            if voice != self._voice:
+                tts = self.session.tts if self.session else None
+                if tts is not None and hasattr(tts, "update_options"):
+                    tts.update_options(voice=voice)
+                    self._voice = voice
+                    logger.info("Switched TTS voice to %s", voice)
+
+        return reply_lang
+
+    async def on_user_turn_completed(
+        self, turn_ctx: llm.ChatContext, new_message: llm.ChatMessage
+    ) -> None:
+        """Lock language for this turn without polluting history or stacking locks."""
+        text = new_message.text_content or ""
+        # Ignore empty / noise turns so we do not thrash language state.
+        if not text.strip():
+            return
+
+        reply_lang = await self.apply_language(text, self._last_stt_language)
+
+        # Keep at most ONE ephemeral language lock in context (replace, never stack).
+        _strip_lang_locks(turn_ctx)
+        if reply_lang == "en":
+            lock = (
+                f"{_LANG_LOCK_PREFIX} Reply in English only for this turn. "
+                "Never ask for OTP, PIN, or account number. "
+                "Never promise scheme approval."
+            )
+        else:
+            lock = (
+                f"{_LANG_LOCK_PREFIX} Reply in Hindi only for this turn. "
+                "OTP, PIN, ya account number kabhi mat mango. "
+                "Scheme approval kabhi guarantee mat karo."
+            )
+        turn_ctx.add_message(role="system", content=lock)
+        logger.info("Turn language lock set once: %s", reply_lang)
 
 
 server = AgentServer()
@@ -58,63 +243,49 @@ server.setup_fnc = prewarm
 
 @server.rtc_session()
 async def my_agent(ctx: JobContext):
-    # Logging setup
-    # Add any other context you want in all log entries here
     ctx.log_context_fields = {
         "room": ctx.room.name,
     }
 
-    # Set up a voice AI pipeline using Murf Falcon, Gemini, Deepgram, and the LiveKit turn detector
     session = AgentSession(
-        # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
-        # See all available models at https://docs.livekit.io/agents/models/stt/
-        stt=deepgram.STT(model="nova-3"),
-        # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
-        # See all available models at https://docs.livekit.io/agents/models/llm/
+        stt=deepgram.STT(model="nova-3", language="multi"),
+        # Free-tier quotas are per model. gemini-2.5-flash / 2.0-flash hit 429
+        # (20 req/day). gemini-flash-lite-latest still has quota and works.
         llm=google.LLM(
-            model="gemini-3.5-flash-lite",
+            model="gemini-flash-lite-latest",
         ),
-        # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
-        # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
         tts=murf.TTS(
-            voice="Anisha",
-            locale="en-IN",
+            voice=VOICE_HI,
             style="Conversation",
             tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
             text_pacing=True,
         ),
-        # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
-        # See more at https://docs.livekit.io/agents/build/turns
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        # allow the LLM to generate a response while waiting for the end of turn
-        # See more at https://docs.livekit.io/agents/build/audio/#preemptive-generation
-        preemptive_generation=True,
+        # Avoid racing a second reply before the user finished speaking.
+        preemptive_generation=False,
     )
 
-    # To use a realtime model instead of a voice pipeline, use the following session setup instead.
-    # (Note: This is for the OpenAI Realtime API. For other providers, see https://docs.livekit.io/agents/models/realtime/))
-    # 1. Install livekit-agents[openai]
-    # 2. Set OPENAI_API_KEY in .env.local
-    # 3. Add `from livekit.plugins import openai` to the top of this file
-    # 4. Use the following session setup instead of the version above
-    # session = AgentSession(
-    #     llm=openai.realtime.RealtimeModel(voice="marin")
-    # )
+    agent = Assistant()
 
-    # # Add a virtual avatar to the session, if desired
-    # # For other providers, see https://docs.livekit.io/agents/models/avatar/
-    # avatar = hedra.AvatarSession(
-    #   avatar_id="...",  # See https://docs.livekit.io/agents/models/avatar/plugins/hedra
-    # )
-    # # Start the avatar and wait for it to join
-    # await avatar.start(session, room=ctx.room)
+    @session.on("user_input_transcribed")
+    def on_user_input_transcribed(ev: UserInputTranscribedEvent):
+        if not ev.is_final:
+            return
+        language = str(ev.language) if ev.language else None
+        agent.note_stt_language(language, ev.transcript)
+        logger.info(
+            "STT final transcript lang=%s text=%r",
+            language,
+            (ev.transcript or "")[:120],
+        )
 
-    # Start the session, which initializes the voice pipeline and warms up the models
     await session.start(
-        agent=Assistant(),
+        agent=agent,
         room=ctx.room,
         room_options=room_io.RoomOptions(
+            text_input=True,
+            text_output=True,
             audio_input=room_io.AudioInputOptions(
                 noise_cancellation=lambda params: (
                     noise_cancellation.BVCTelephony()
@@ -126,8 +297,10 @@ async def my_agent(ctx: JobContext):
         ),
     )
 
-    # Join the room and connect to the user
     await ctx.connect()
+
+    # One greeting only; user can interrupt immediately.
+    await session.say(FIRST_GREETING, allow_interruptions=True)
 
 
 if __name__ == "__main__":

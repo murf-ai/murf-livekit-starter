@@ -177,7 +177,8 @@ export function AgentSessionView_01({
 }: React.ComponentProps<'section'> & AgentSessionView_01Props) {
   const session = useSessionContext();
   const { messages } = useSessionMessages(session);
-  const [chatOpen, setChatOpen] = useState(false);
+  // Open transcript by default so users can read what the agent says (subtitles).
+  const [chatOpen, setChatOpen] = useState(true);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { state: agentState } = useAgent();
 
@@ -189,11 +190,15 @@ export function AgentSessionView_01({
     screenShare: supportsScreenShare,
   };
 
+  // Latest non-empty agent message for always-on subtitles when chat is collapsed.
+  const latestAgentSubtitle = [...messages]
+    .reverse()
+    .find((m) => m.from?.isLocal !== true && Boolean(m.message?.trim()))?.message;
+
   useEffect(() => {
     const lastMessage = messages.at(-1);
-    const lastMessageIsLocal = lastMessage?.from?.isLocal === true;
 
-    if (scrollAreaRef.current && lastMessageIsLocal) {
+    if (scrollAreaRef.current && lastMessage) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
   }, [messages]);
@@ -219,6 +224,24 @@ export function AgentSessionView_01({
                 messages={messages}
                 className="mx-auto w-full max-w-2xl [&_.is-user>div]:rounded-[22px] [&>div>div]:px-4 [&>div>div]:pt-40 md:[&>div>div]:px-6"
               />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Always-visible subtitle caption when chat panel is closed */}
+        <AnimatePresence>
+          {!chatOpen && latestAgentSubtitle && (
+            <motion.div
+              key="agent-subtitle"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.2 }}
+              className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex justify-center md:inset-x-12"
+            >
+              <p className="bg-background/85 text-foreground border-border max-w-2xl rounded-2xl border px-4 py-3 text-center text-sm leading-relaxed shadow-lg backdrop-blur-md md:text-base">
+                {latestAgentSubtitle}
+              </p>
             </motion.div>
           )}
         </AnimatePresence>
