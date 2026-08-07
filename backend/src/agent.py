@@ -1,7 +1,10 @@
 import logging
 
+logging.basicConfig(level=logging.DEBUG)
+
 from dotenv import load_dotenv
 from livekit import rtc
+from promt import SYSTEM_PROMPT
 from livekit.agents import (
     Agent,
     AgentServer,
@@ -20,23 +23,6 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 logger = logging.getLogger("agent")
 
 load_dotenv(".env.local")
-
-# Change this prompt to change what your voice agent does.
-# See README.md for example prompts (customer support, language tutor, receptionist).
-SYSTEM_PROMPT = """You are FinSafe, a warm, professional, and accessible voice assistant for financial services.
-Your primary role is to educate users on:
-1. Government financial schemes (such as PMJDY, PMSBY, PMJJBY, Atal Pension Yojana, Sukanya Samriddhi Yojana, PM Mudra Yojana, Senior Citizen Savings Scheme, Sovereign Gold Bond).
-2. General banking literacy (KYC, UPI safety, savings vs current accounts, fixed deposits, credit scores, interest rates).
-3. Fraud awareness and scam protection (detecting OTP/PIN scams, phishing links, urgent fake KYC block messages, fake investment schemes, screen sharing app traps).
-
-Guidelines for your speech output:
-- Speak in clear, plain language without financial jargon. Explain complex terms simply.
-- Keep your responses concise, conversational, and direct, suitable for voice output.
-- NEVER use special symbols, emojis, markdown formatting, bullet points, or bold text in your spoken responses.
-- Safety Rule: ALWAYS remind users NEVER to share OTPs, PINs, passwords, CVVs, or full card numbers with anyone over the phone or online, including bank officials or yourself.
-- If a user describes a potential scam, evaluate the risk immediately and provide urgent action steps (such as hanging up, blocking the sender, calling official bank helpline, or reporting on 1930 Cybercrime Helpline).
-"""
-
 
 class Assistant(Agent):
     def __init__(self) -> None:
@@ -240,17 +226,18 @@ async def my_agent(ctx: JobContext):
         # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
         # See all available models at https://docs.livekit.io/agents/models/llm/
         llm=google.LLM(
-            model="gemini-3.5-flash",
+            model="gemini-3.5-flash-lite",
         ),
         # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
         # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
         tts=murf.TTS(
-            voice="en-IN-pooja",
-            locale="en-IN",
+            voice="hi-IN-anisha",
             style="Conversation",
             tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
             text_pacing=True,
         ),
+
+
         # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
         # See more at https://docs.livekit.io/agents/build/turns
         turn_detection=MultilingualModel(),
@@ -293,6 +280,10 @@ async def my_agent(ctx: JobContext):
             ),
         ),
     )
+
+    await session.generate_reply(
+    instructions="Introduce yourself and greet the user."
+)
 
     # Join the room and connect to the user
     await ctx.connect()
