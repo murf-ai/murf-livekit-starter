@@ -1,20 +1,14 @@
+import { ArrowRightIcon, HeadphonesIcon, MicIcon, ShoppingBagIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-function WelcomeImage() {
+function MitraMark() {
   return (
-    <svg
-      width="64"
-      height="64"
-      viewBox="0 0 64 64"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="text-fg0 mb-4 size-16"
-    >
-      <path
-        d="M15 24V40C15 40.7957 14.6839 41.5587 14.1213 42.1213C13.5587 42.6839 12.7956 43 12 43C11.2044 43 10.4413 42.6839 9.87868 42.1213C9.31607 41.5587 9 40.7957 9 40V24C9 23.2044 9.31607 22.4413 9.87868 21.8787C10.4413 21.3161 11.2044 21 12 21C12.7956 21 13.5587 21.3161 14.1213 21.8787C14.6839 22.4413 15 23.2044 15 24ZM22 5C21.2044 5 20.4413 5.31607 19.8787 5.87868C19.3161 6.44129 19 7.20435 19 8V56C19 56.7957 19.3161 57.5587 19.8787 58.1213C20.4413 58.6839 21.2044 59 22 59C22.7956 59 23.5587 58.6839 24.1213 58.1213C24.6839 57.5587 25 56.7957 25 56V8C25 7.20435 24.6839 6.44129 24.1213 5.87868C23.5587 5.31607 22.7956 5 22 5ZM32 13C31.2044 13 30.4413 13.3161 29.8787 13.8787C29.3161 14.4413 29 15.2044 29 16V48C29 48.7957 29.3161 49.5587 29.8787 50.1213C30.4413 50.6839 31.2044 51 32 51C32.7956 51 33.5587 50.6839 34.1213 50.1213C34.6839 49.5587 35 48.7957 35 48V16C35 15.2044 34.6839 14.4413 34.1213 13.8787C33.5587 13.3161 32.7956 13 32 13ZM42 21C41.2043 21 40.4413 21.3161 39.8787 21.8787C39.3161 22.4413 39 23.2044 39 24V40C39 40.7957 39.3161 41.5587 39.8787 42.1213C40.4413 42.6839 41.2043 43 42 43C42.7957 43 43.5587 42.6839 44.1213 42.1213C44.6839 41.5587 45 40.7957 45 40V24C45 23.2044 44.6839 22.4413 44.1213 21.8787C43.5587 21.3161 42.7957 21 42 21ZM52 17C51.2043 17 50.4413 17.3161 49.8787 17.8787C49.3161 18.4413 49 19.2044 49 20V44C49 44.7957 49.3161 45.5587 49.8787 46.1213C50.4413 46.6839 51.2043 47 52 47C52.7957 47 53.5587 46.6839 54.1213 46.1213C54.6839 45.5587 55 44.7957 55 44V20C55 19.2044 54.6839 18.4413 54.1213 17.8787C53.5587 17.3161 52.7957 17 52 17Z"
-        fill="currentColor"
-      />
-    </svg>
+    <div className="relative grid size-24 place-items-center rounded-[2rem] bg-orange-600 text-white shadow-[0_20px_50px_-20px_rgba(194,65,12,0.65)]">
+      <ShoppingBagIcon className="size-11" strokeWidth={1.8} />
+      <span className="absolute -right-2 -bottom-2 grid size-9 place-items-center rounded-full border-4 border-orange-50 bg-emerald-700">
+        <MicIcon className="size-4" />
+      </span>
+    </div>
   );
 }
 
@@ -29,33 +23,48 @@ export const WelcomeView = ({
   ref,
 }: React.ComponentProps<'div'> & WelcomeViewProps) => {
   return (
-    <div ref={ref}>
-      <section className="bg-background flex flex-col items-center justify-center text-center">
-        <WelcomeImage />
+    <div ref={ref} className="w-full px-5 py-10">
+      <section className="mx-auto flex max-w-5xl flex-col items-center gap-10 lg:flex-row lg:justify-between">
+        <div className="max-w-2xl text-center lg:text-left">
+          <div className="mb-7 flex justify-center lg:justify-start">
+            <MitraMark />
+          </div>
+          <p className="mb-3 font-mono text-xs font-bold tracking-[0.2em] text-orange-700 uppercase">
+            Your local shopping companion
+          </p>
+          <h1 className="text-4xl leading-[1.05] font-bold tracking-tight text-stone-900 sm:text-6xl dark:text-orange-50">
+            Meet Mitra. Shop local, simply by speaking.
+          </h1>
+          <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-stone-600 sm:text-lg lg:mx-0 dark:text-stone-300">
+            स्थानीय products खोजें, listed prices पूछें, और pickup या delivery order request
+            तैयार करें। हिंदी, English, या दोनों में बात करें।
+          </p>
+        </div>
 
-        <p className="text-foreground max-w-prose pt-1 leading-6 font-medium">
-          Discover local products. Order by voice.
-        </p>
+        <div className="w-full max-w-sm rounded-[2rem] border border-orange-200/70 bg-white/80 p-6 shadow-xl shadow-orange-900/5 backdrop-blur dark:border-orange-900 dark:bg-stone-900/80">
+          <div className="mb-6 flex items-center gap-3">
+            <span className="grid size-11 place-items-center rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+              <HeadphonesIcon className="size-5" />
+            </span>
+            <div>
+              <p className="font-semibold text-stone-900 dark:text-stone-100">Mitra is ready</p>
+              <p className="text-sm text-stone-500 dark:text-stone-400">मित्र तैयार है</p>
+            </div>
+          </div>
 
-        <p className="text-muted-foreground mt-2 max-w-md text-sm leading-6 text-pretty">
-          Browse catalogues from artisans, MSMEs, and street vendors, then place a
-          pickup or delivery order in a natural conversation.
-        </p>
-
-        <Button
-          size="lg"
-          onClick={onStartCall}
-          className="mt-6 w-64 rounded-full font-mono text-xs font-bold tracking-wider uppercase"
-        >
-          {startButtonText}
-        </Button>
+          <Button
+            size="lg"
+            onClick={onStartCall}
+            className="h-14 w-full rounded-2xl bg-orange-600 text-base font-bold text-white shadow-lg shadow-orange-600/20 hover:bg-orange-700"
+          >
+            {startButtonText}
+            <ArrowRightIcon className="size-5" />
+          </Button>
+          <p className="mt-4 text-center text-xs leading-5 text-stone-500 dark:text-stone-400">
+            We’ll ask for microphone access. Mitra never asks for your OTP or PIN.
+          </p>
+        </div>
       </section>
-
-      <div className="fixed bottom-5 left-0 flex w-full items-center justify-center">
-        <p className="text-muted-foreground max-w-prose pt-1 text-xs leading-5 font-normal text-pretty md:text-sm">
-          Local sellers confirm availability, fulfilment, and payment after you order.
-        </p>
-      </div>
     </div>
   );
 };

@@ -33,8 +33,8 @@ export interface AppConfig {
 }
 
 export const APP_CONFIG_DEFAULTS: AppConfig = {
-  companyName: 'Local Commerce',
-  pageTitle: 'Local Commerce | Shop from local sellers',
+  companyName: 'Mitra',
+  pageTitle: 'Mitra | Your local shopping companion',
   pageDescription:
     'Browse local catalogues and place orders with artisans, MSMEs, and street vendors by voice.',
 
@@ -47,12 +47,12 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   accent: '#C2410C',
   logoDark: '/murf-logo-dark.svg',
   accentDark: '#FB923C',
-  startButtonText: 'Browse local products',
+  startButtonText: 'Talk to Mitra',
 
   // optional: audio visualization configuration
-  // audioVisualizerType: 'bar',
-  // audioVisualizerColor: '#002cf2',
-  // audioVisualizerColorDark: '#1fd5f9',
+  audioVisualizerType: 'wave',
+  audioVisualizerColor: '#C2410C',
+  audioVisualizerColorDark: '#FB923C',
   // audioVisualizerColorShift: 0.3,
   // audioVisualizerBarCount: 5,
   // audioVisualizerType: 'radial',
@@ -62,7 +62,7 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   // audioVisualizerGridRowCount: 25,
   // audioVisualizerGridColumnCount: 25,
   // audioVisualizerType: 'wave',
-  // audioVisualizerWaveLineWidth: 3,
+  audioVisualizerWaveLineWidth: 3,
   // audioVisualizerType: 'aura',
 
   // agent dispatch configuration
