@@ -12,6 +12,7 @@ import { Shimmer } from '@/components/ai-elements/shimmer';
 import { cn } from '@/lib/shadcn/utils';
 import { TileLayout } from './tile-view';
 
+
 const MotionMessage = motion.create(Shimmer);
 
 const BOTTOM_VIEW_MOTION_PROPS: MotionProps = {
@@ -176,10 +177,25 @@ export function AgentSessionView_01({
   ...props
 }: React.ComponentProps<'section'> & AgentSessionView_01Props) {
   const session = useSessionContext();
+  const [hasStarted, setHasStarted] = useState(false);
+
+const handleStartCall = async () => {
+  setHasStarted(true);
+  await start();
+};
   const { messages } = useSessionMessages(session);
   const [chatOpen, setChatOpen] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { state: agentState } = useAgent();
+  const statusText =
+  agentState === 'listening'
+    ? '🎙️ MediSathi is listening'
+    : agentState === 'speaking'
+      ? '🔊 MediSathi is speaking'
+      : agentState === 'thinking'
+        ? '🤔 MediSathi is thinking'
+        : '🟢 MediSathi is ready';
+
 
   const controls: AgentControlBarControls = {
     leave: true,
@@ -204,6 +220,9 @@ export function AgentSessionView_01({
       className={cn('bg-background relative z-10 h-full w-full overflow-hidden', className)}
       {...props}
     >
+      <div className="absolute left-1/2 top-6 z-50 -translate-x-1/2 rounded-full border border-teal-400/20 bg-background/90 px-5 py-2 text-sm font-semibold shadow-lg backdrop-blur">
+      {statusText}
+      </div>
       <Fade top className="absolute inset-x-4 top-0 z-10 h-40" />
       {/* transcript */}
 
