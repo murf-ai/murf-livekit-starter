@@ -119,6 +119,19 @@
     @apply border-foreground/20 outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+   body {
+  background-color: #050505;
+  /* This applies a dark shadow over your image so the UI stays readable */
+  background-image: 
+    linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.85)), 
+    url('"C:\Users\ishant\Desktop\ICcodes\MurfAI\murf-livekit-starter\frontend\public\background.jpg"');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed; /* Keeps the image still when scrolling */
+  color: #ffffff;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
   }
 }
