@@ -2,7 +2,13 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, type MotionProps, motion } from 'motion/react';
-import { useAgent, useSessionContext, useSessionMessages } from '@livekit/components-react';
+import {
+  useAgent,
+  useSessionContext,
+  useSessionMessages,
+  useVoiceAssistant,
+} from '@livekit/components-react';
+import { Landmark, Mic, ShieldCheck, Volume2 } from 'lucide-react';
 import { AgentChatTranscript } from '@/components/agents-ui/agent-chat-transcript';
 import {
   AgentControlBar,
@@ -180,6 +186,7 @@ export function AgentSessionView_01({
   const [chatOpen, setChatOpen] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { state: agentState } = useAgent();
+  const { state: voiceAssistantState } = useVoiceAssistant();
 
   const controls: AgentControlBarControls = {
     leave: true,
@@ -198,6 +205,36 @@ export function AgentSessionView_01({
     }
   }, [messages]);
 
+  const currentSpeakerState =
+    voiceAssistantState === 'speaking' || agentState === 'speaking'
+      ? 'speaking'
+      : voiceAssistantState === 'listening' || agentState === 'listening'
+        ? 'listening'
+        : 'ready';
+
+  const statusConfig = {
+    speaking: {
+      label: 'Support agent is speaking',
+      description: 'Your advisor is providing the next formal step for your request.',
+      icon: Volume2,
+      accent: 'from-violet-500/20 to-fuchsia-500/10 text-violet-700 dark:text-violet-200',
+    },
+    listening: {
+      label: 'Listening to your request',
+      description: 'The support agent is ready to assist with your account or service enquiry.',
+      icon: Mic,
+      accent: 'from-sky-500/20 to-cyan-500/10 text-sky-700 dark:text-sky-200',
+    },
+    ready: {
+      label: 'Ready to assist',
+      description: 'You can speak naturally and the advisor will guide you through the next step.',
+      icon: ShieldCheck,
+      accent: 'from-emerald-500/20 to-lime-500/10 text-emerald-700 dark:text-emerald-200',
+    },
+  }[currentSpeakerState];
+
+  const StatusIcon = statusConfig.icon;
+
   return (
     <section
       ref={ref}
@@ -205,6 +242,18 @@ export function AgentSessionView_01({
       {...props}
     >
       <Fade top className="absolute inset-x-4 top-0 z-10 h-40" />
+
+      <div className="absolute inset-x-4 top-4 z-40 flex justify-center md:inset-x-8">
+        <div className={cn('flex items-center gap-3 rounded-full border border-white/40 bg-white/80 px-4 py-2 shadow-lg backdrop-blur dark:border-slate-700/70 dark:bg-slate-950/80', statusConfig.accent)}>
+          <div className="flex size-8 items-center justify-center rounded-full bg-white/80 shadow-sm dark:bg-slate-900/80">
+            <StatusIcon className="size-4" />
+          </div>
+          <div className="min-w-0 text-left">
+            <p className="text-sm font-semibold">{statusConfig.label}</p>
+            <p className="text-xs opacity-80">{statusConfig.description}</p>
+          </div>
+        </div>
+      </div>
       {/* transcript */}
 
       <div className="absolute top-0 bottom-[135px] flex w-full flex-col md:bottom-[170px]">

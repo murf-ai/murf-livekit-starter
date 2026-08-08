@@ -1,4 +1,6 @@
+import { AudioLines, Landmark, Mic, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/shadcn/utils';
 
 function WelcomeImage() {
   return (
@@ -21,32 +23,84 @@ function WelcomeImage() {
 interface WelcomeViewProps {
   startButtonText: string;
   onStartCall: () => void;
+  statusLabel: string;
+  statusDescription: string;
+  permissionError?: string | null;
 }
 
 export const WelcomeView = ({
   startButtonText,
   onStartCall,
+  statusLabel,
+  statusDescription,
+  permissionError,
   ref,
 }: React.ComponentProps<'div'> & WelcomeViewProps) => {
   return (
-    <div ref={ref}>
-      <section className="bg-background flex flex-col items-center justify-center text-center">
-        <WelcomeImage />
+    <div ref={ref} className="w-full px-4">
+      <section className="mx-auto flex max-w-3xl flex-col items-center justify-center text-center">
+        <div className="bg-background/95 border-border/70 w-full rounded-[28px] border border-slate-300/80 p-8 shadow-[0_20px_60px_-28px_rgba(15,23,42,0.35)] backdrop-blur md:p-10">
+          <div className="mb-5 flex items-center justify-center gap-2 text-[11px] font-semibold tracking-[0.32em] text-slate-600 uppercase">
+            <Landmark className="size-4" />
+            <span>Financial Support Desk</span>
+          </div>
 
-        <p className="text-foreground max-w-prose pt-1 leading-6 font-medium">
-          Chat live with your voice AI agent
-        </p>
+          <div className="mb-6 flex justify-center">
+            <div className="bg-slate-100 text-slate-800 flex size-16 items-center justify-center rounded-2xl border border-slate-300">
+              <WelcomeImage />
+            </div>
+          </div>
 
-        <Button
-          size="lg"
-          onClick={onStartCall}
-          className="mt-6 w-64 rounded-full font-mono text-xs font-bold tracking-wider uppercase"
-        >
-          {startButtonText}
-        </Button>
+          <div className="mb-5 rounded-2xl border border-slate-300/80 bg-slate-50/90 p-4 text-left shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+              <AudioLines className="size-4" />
+              <span>{statusLabel}</span>
+            </div>
+            <p className="text-sm leading-6 text-slate-600 dark:text-slate-300">{statusDescription}</p>
+          </div>
+
+          <p className="mx-auto max-w-2xl text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
+            Access secure financial support through a guided voice service.
+          </p>
+
+          <p className="mx-auto mt-3 max-w-xl text-base leading-7 text-slate-600 dark:text-slate-300">
+            This service provides clear, official guidance for account questions, service requests, and next-step support in a structured and compliant experience.
+          </p>
+
+          <div className="mt-6 flex flex-wrap justify-center gap-3 text-sm text-slate-600 dark:text-slate-300">
+            <span className="rounded-full border border-slate-300 bg-white/80 px-3 py-1.5 dark:border-slate-700 dark:bg-slate-950/80">
+              Official support guidance
+            </span>
+            <span className="rounded-full border border-slate-300 bg-white/80 px-3 py-1.5 dark:border-slate-700 dark:bg-slate-950/80">
+              Structured account assistance
+            </span>
+            <span className="rounded-full border border-slate-300 bg-white/80 px-3 py-1.5 dark:border-slate-700 dark:bg-slate-950/80">
+              Clear next steps
+            </span>
+          </div>
+
+          <Button
+            size="lg"
+            onClick={onStartCall}
+            className="mt-8 h-12 rounded-full px-7 text-sm font-semibold tracking-[0.2em] uppercase"
+          >
+            {startButtonText}
+          </Button>
+
+          {permissionError ? (
+            <div className="mx-auto mt-6 max-w-2xl rounded-2xl border border-amber-300/70 bg-amber-50 p-4 text-left text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/70 dark:text-amber-200">
+              <div className="mb-2 flex items-center gap-2 font-semibold">
+                <Mic className="size-4" />
+                <span>Microphone access is required</span>
+              </div>
+              <p>{permissionError}</p>
+              <p className="mt-2">Open your browser site settings and allow microphone access, then refresh and try again so support can assist you through the secure service.</p>
+            </div>
+          ) : null}
+        </div>
       </section>
 
-      <div className="fixed bottom-5 left-0 flex w-full items-center justify-center">
+      <div className="fixed bottom-5 left-0 flex w-full items-center justify-center px-4">
         <p className="text-muted-foreground max-w-prose pt-1 text-xs leading-5 font-normal text-pretty md:text-sm">
           Need help getting set up? Check out the{' '}
           <a
