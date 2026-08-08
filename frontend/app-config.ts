@@ -46,7 +46,7 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   accent: '#059669',
   logoDark: '/murf-logo-dark.svg',
   accentDark: '#10b981',
-  startButtonText: 'Talk to FinSafe Advisor',
+  startButtonText: 'Start Conversation',
 
   // optional: audio visualization configuration
   // audioVisualizerType: 'bar',

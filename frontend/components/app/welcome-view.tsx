@@ -1,65 +1,292 @@
+'use client';
+
+import React from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  Mic,
+  MicOff,
+  Sparkles,
+  RefreshCw,
+  CheckCircle2,
+  ShieldAlert,
+  HelpCircle,
+  ShieldCheck,
+  ArrowRight,
+  Volume2,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/shadcn/utils';
 
-function WelcomeImage() {
-  return (
-    <svg
-      width="64"
-      height="64"
-      viewBox="0 0 64 64"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="text-fg0 mb-4 size-16"
-    >
-      <path
-        d="M15 24V40C15 40.7957 14.6839 41.5587 14.1213 42.1213C13.5587 42.6839 12.7956 43 12 43C11.2044 43 10.4413 42.6839 9.87868 42.1213C9.31607 41.5587 9 40.7957 9 40V24C9 23.2044 9.31607 22.4413 9.87868 21.8787C10.4413 21.3161 11.2044 21 12 21C12.7956 21 13.5587 21.3161 14.1213 21.8787C14.6839 22.4413 15 23.2044 15 24ZM22 5C21.2044 5 20.4413 5.31607 19.8787 5.87868C19.3161 6.44129 19 7.20435 19 8V56C19 56.7957 19.3161 57.5587 19.8787 58.1213C20.4413 58.6839 21.2044 59 22 59C22.7956 59 23.5587 58.6839 24.1213 58.1213C24.6839 57.5587 25 56.7957 25 56V8C25 7.20435 24.6839 6.44129 24.1213 5.87868C23.5587 5.31607 22.7956 5 22 5ZM32 13C31.2044 13 30.4413 13.3161 29.8787 13.8787C29.3161 14.4413 29 15.2044 29 16V48C29 48.7957 29.3161 49.5587 29.8787 50.1213C30.4413 50.6839 31.2044 51 32 51C32.7956 51 33.5587 50.6839 34.1213 50.1213C34.6839 49.5587 35 48.7957 35 48V16C35 15.2044 34.6839 14.4413 34.1213 13.8787C33.5587 13.3161 32.7956 13 32 13ZM42 21C41.2043 21 40.4413 21.3161 39.8787 21.8787C39.3161 22.4413 39 23.2044 39 24V40C39 40.7957 39.3161 41.5587 39.8787 42.1213C40.4413 42.6839 41.2043 43 42 43C42.7957 43 43.5587 42.6839 44.1213 42.1213C44.6839 41.5587 45 40.7957 45 40V24C45 23.2044 44.6839 22.4413 44.1213 21.8787C43.5587 21.3161 42.7957 21 42 21ZM52 17C51.2043 17 50.4413 17.3161 49.8787 17.8787C49.3161 18.4413 49 19.2044 49 20V44C49 44.7957 49.3161 45.5587 49.8787 46.1213C50.4413 46.6839 51.2043 47 52 47C52.7957 47 53.5587 46.6839 54.1213 46.1213C54.6839 45.5587 55 44.7957 55 44V20C55 19.2044 54.6839 18.4413 54.1213 17.8787C53.5587 17.3161 52.7957 17 52 17Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
+export type WelcomeViewState = 'READY' | 'CONNECTING' | 'CALL_ENDED' | 'MIC_ERROR';
 
-interface WelcomeViewProps {
-  startButtonText: string;
+export interface WelcomeViewProps {
+  state?: WelcomeViewState;
+  startButtonText?: string;
   onStartCall: () => void;
+  onStartAgain?: () => void;
+  onTryAgain?: () => void;
+  errorMessage?: string | null;
+  errorDescription?: string | null;
 }
 
-export const WelcomeView = ({
-  startButtonText,
-  onStartCall,
-  ref,
-}: React.ComponentProps<'div'> & WelcomeViewProps) => {
-  return (
-    <div ref={ref}>
-      <section className="bg-background flex flex-col items-center justify-center text-center">
-        <WelcomeImage />
+const PROMPT_EXAMPLES = [
+  {
+    icon: '🏛️',
+    title: 'Government Schemes',
+    prompt: 'Explain Pradhan Mantri Jan Dhan Yojana (PMJDY)',
+  },
+  {
+    icon: '🛡️',
+    title: 'Fraud Alert Check',
+    prompt: 'Is sharing an OTP or installing AnyDesk safe?',
+  },
+  {
+    icon: '💳',
+    title: 'Banking Terms',
+    prompt: 'What is a CIBIL score and how does it work?',
+  },
+  {
+    icon: '📜',
+    title: 'Pension & Savings',
+    prompt: 'Tell me about Atal Pension Yojana and SSY',
+  },
+];
 
-        <p className="text-foreground max-w-prose pt-1 leading-6 font-medium">
-          Chat live with your voice AI agent
-        </p>
+export const WelcomeView = React.forwardRef<HTMLDivElement, WelcomeViewProps>(
+  (
+    {
+      state = 'READY',
+      startButtonText = 'Start Conversation',
+      onStartCall,
+      onStartAgain,
+      onTryAgain,
+      errorMessage,
+      errorDescription,
+    },
+    ref
+  ) => {
+    return (
+      <div
+        ref={ref}
+        className="relative z-10 flex flex-col items-center justify-center min-h-[85vh] w-full max-w-4xl mx-auto px-4 py-8 text-center"
+      >
+        <AnimatePresence mode="wait">
+          {/* STATE A: READY */}
+          {state === 'READY' && (
+            <motion.div
+              key="ready-state"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.3 }}
+              className="flex flex-col items-center max-w-2xl w-full"
+            >
+              {/* Hero AI Avatar Icon */}
+              <div className="relative mb-6 group cursor-pointer" onClick={onStartCall}>
+                <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-emerald-500/20 to-teal-500/20 blur-xl opacity-75 group-hover:opacity-100 transition duration-500 animate-pulse" />
+                <div className="relative flex items-center justify-center size-24 rounded-3xl bg-background border-2 border-emerald-500/30 shadow-2xl shadow-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                  <Mic className="size-10 text-emerald-500 animate-pulse" />
+                  <div className="absolute -bottom-2 -right-2 bg-emerald-500 text-white rounded-full p-1.5 shadow-md">
+                    <Sparkles className="size-4" />
+                  </div>
+                </div>
+              </div>
 
-        <Button
-          size="lg"
-          onClick={onStartCall}
-          className="mt-6 w-64 rounded-full font-mono text-xs font-bold tracking-wider uppercase"
-        >
-          {startButtonText}
-        </Button>
-      </section>
+              {/* Status Badge */}
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 mb-4 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border border-emerald-500/20">
+                <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>State: READY</span>
+              </div>
 
-      <div className="fixed bottom-5 left-0 flex w-full items-center justify-center">
-        <p className="text-muted-foreground max-w-prose pt-1 text-xs leading-5 font-normal text-pretty md:text-sm">
-          Need help getting set up? Check out the{' '}
-          <a
-            target="_blank"
-            rel="noopener noreferrer"
-            href="https://docs.livekit.io/agents/start/voice-ai/"
-            className="underline"
-          >
-            Voice AI quickstart
-          </a>
-          .
-        </p>
+              {/* Title & Tagline */}
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-foreground mb-3">
+                FinSafe AI Voice Assistant
+              </h1>
+
+              <p className="text-base sm:text-lg text-muted-foreground max-w-xl leading-relaxed mb-8">
+                Your interactive AI guide for Indian government financial schemes, banking literacy, and real-time fraud prevention.
+              </p>
+
+              {/* Main Primary CTA Button */}
+              <div className="w-full max-w-sm mb-10">
+                <Button
+                  size="lg"
+                  onClick={onStartCall}
+                  className="w-full h-14 rounded-2xl text-base font-bold tracking-wide uppercase shadow-lg shadow-emerald-500/20 bg-emerald-600 hover:bg-emerald-500 text-white transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-3 cursor-pointer"
+                >
+                  <Mic className="size-5" />
+                  <span>{startButtonText}</span>
+                  <ArrowRight className="size-5 opacity-80" />
+                </Button>
+                <p className="text-xs text-muted-foreground pt-3.5 font-medium">
+                  Press button to allow mic access & start your live voice conversation
+                </p>
+              </div>
+
+              {/* Sample Prompt Chips Grid */}
+              <div className="w-full max-w-2xl">
+                <div className="flex items-center justify-center gap-2 mb-3 text-xs font-bold tracking-wider uppercase text-muted-foreground">
+                  <HelpCircle className="size-3.5" />
+                  <span>What you can ask FinSafe AI</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+                  {PROMPT_EXAMPLES.map((item, idx) => (
+                    <div
+                      key={idx}
+                      onClick={onStartCall}
+                      className="group p-3.5 rounded-xl bg-card border border-border/60 hover:border-emerald-500/40 hover:bg-emerald-500/5 transition-all duration-200 cursor-pointer shadow-xs"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-base">{item.icon}</span>
+                        <span className="text-xs font-bold text-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400">
+                          {item.title}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-1 italic">
+                        "{item.prompt}"
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* STATE B: CONNECTING */}
+          {state === 'CONNECTING' && (
+            <motion.div
+              key="connecting-state"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.3 }}
+              className="flex flex-col items-center max-w-md w-full p-8 rounded-3xl bg-card border border-border/80 shadow-2xl"
+            >
+              {/* Radar pulse visualizer */}
+              <div className="relative flex items-center justify-center size-28 mb-6">
+                <div className="absolute inset-0 rounded-full bg-amber-500/20 animate-ping opacity-75" />
+                <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-amber-500/10 to-emerald-500/10 blur-md animate-pulse" />
+                <div className="relative flex items-center justify-center size-20 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-500">
+                  <RefreshCw className="size-9 animate-spin" />
+                </div>
+              </div>
+
+              {/* Status Badge */}
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 mb-3 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-300 border border-amber-500/20">
+                <span className="size-2 rounded-full bg-amber-500 animate-ping" />
+                <span>State: CONNECTING</span>
+              </div>
+
+              <h2 className="text-2xl font-bold text-foreground mb-2">
+                Connecting to your voice agent...
+              </h2>
+
+              <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+                Establishing secure WebRTC audio stream & initializing Murf Falcon voice pipeline.
+              </p>
+
+              <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden mb-4">
+                <div className="bg-gradient-to-r from-amber-500 to-emerald-500 h-full w-2/3 animate-pulse rounded-full" />
+              </div>
+
+              <Button disabled variant="outline" className="w-full rounded-xl text-xs font-semibold">
+                Connecting... Please wait
+              </Button>
+            </motion.div>
+          )}
+
+          {/* STATE E: CALL ENDED */}
+          {state === 'CALL_ENDED' && (
+            <motion.div
+              key="call-ended-state"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.3 }}
+              className="flex flex-col items-center max-w-md w-full p-8 rounded-3xl bg-card border border-border/80 shadow-2xl"
+            >
+              <div className="relative flex items-center justify-center size-20 mb-5 rounded-2xl bg-slate-500/10 border border-slate-500/30 text-slate-500">
+                <CheckCircle2 className="size-10 text-slate-400" />
+              </div>
+
+              {/* Status Badge */}
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 mb-3 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-500/10 text-slate-600 dark:text-slate-400 border border-slate-500/20">
+                <span className="size-2 rounded-full bg-slate-400" />
+                <span>State: CALL ENDED</span>
+              </div>
+
+              <h2 className="text-2xl font-bold text-foreground mb-2">
+                Conversation ended
+              </h2>
+
+              <p className="text-sm text-muted-foreground mb-6 leading-relaxed">
+                Your voice session with FinSafe AI has completed. Click below whenever you want to start a new voice session.
+              </p>
+
+              <Button
+                size="lg"
+                onClick={onStartAgain || onStartCall}
+                className="w-full h-12 rounded-xl text-sm font-bold tracking-wide uppercase bg-emerald-600 hover:bg-emerald-500 text-white shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <RefreshCw className="size-4" />
+                <span>Start Again</span>
+              </Button>
+            </motion.div>
+          )}
+
+          {/* STATE F: MICROPHONE ERROR */}
+          {state === 'MIC_ERROR' && (
+            <motion.div
+              key="mic-error-state"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.3 }}
+              className="flex flex-col items-center max-w-md w-full p-8 rounded-3xl bg-card border border-red-500/30 shadow-2xl shadow-red-500/5 text-left"
+            >
+              <div className="flex items-center justify-center size-16 mb-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-500 self-center">
+                <ShieldAlert className="size-8" />
+              </div>
+
+              {/* Status Badge */}
+              <div className="inline-flex items-center gap-2 px-3.5 py-1.5 mb-3 rounded-full text-xs font-bold uppercase tracking-wider bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 self-center">
+                <span className="size-2 rounded-full bg-red-500 animate-pulse" />
+                <span>MICROPHONE ACCESS BLOCKED</span>
+              </div>
+
+              <h2 className="text-xl font-bold text-foreground mb-2 text-center">
+                {errorMessage || 'Microphone access is blocked'}
+              </h2>
+
+              <p className="text-xs text-muted-foreground mb-4 text-center">
+                {errorDescription ||
+                  'Please allow microphone access in your browser settings and try again.'}
+              </p>
+
+              <div className="w-full p-3.5 rounded-xl bg-muted/60 border border-border/80 mb-6 text-xs text-muted-foreground space-y-2">
+                <p className="font-semibold text-foreground">How to fix this:</p>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Click the camera/lock icon in your browser address bar.</li>
+                  <li>Set <strong>Microphone</strong> permission to <strong>Allow</strong>.</li>
+                  <li>Click <strong>Try Again</strong> below.</li>
+                </ol>
+              </div>
+
+              <Button
+                size="lg"
+                onClick={onTryAgain || onStartCall}
+                className="w-full h-12 rounded-xl text-sm font-bold tracking-wide uppercase bg-red-600 hover:bg-red-500 text-white shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <RefreshCw className="size-4" />
+                <span>Try Again</span>
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-    </div>
-  );
-};
+    );
+  }
+);
+
+WelcomeView.displayName = 'WelcomeView';

@@ -2,12 +2,13 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, type MotionProps, motion } from 'motion/react';
-import { useAgent, useSessionContext, useSessionMessages } from '@livekit/components-react';
+import { useAgent, useLocalParticipant, useSessionContext, useSessionMessages } from '@livekit/components-react';
 import { AgentChatTranscript } from '@/components/agents-ui/agent-chat-transcript';
 import {
   AgentControlBar,
   type AgentControlBarControls,
 } from '@/components/agents-ui/agent-control-bar';
+import { AgentStateHeader, type AgentDisplayState } from '@/components/agents-ui/agent-state-header';
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { cn } from '@/lib/shadcn/utils';
 import { TileLayout } from './tile-view';
@@ -180,6 +181,9 @@ export function AgentSessionView_01({
   const [chatOpen, setChatOpen] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { state: agentState } = useAgent();
+  const { isMicrophoneEnabled } = useLocalParticipant();
+
+  const displayState: AgentDisplayState = agentState === 'speaking' ? 'SPEAKING' : 'LISTENING';
 
   const controls: AgentControlBarControls = {
     leave: true,
@@ -204,6 +208,17 @@ export function AgentSessionView_01({
       className={cn('bg-background relative z-10 h-full w-full overflow-hidden', className)}
       {...props}
     >
+      {/* Top Agent State & Speaker Header */}
+      <div className="absolute top-4 inset-x-4 z-50 flex justify-center pointer-events-none">
+        <div className="pointer-events-auto w-full max-w-xl">
+          <AgentStateHeader
+            state={displayState}
+            isAgentSpeaking={agentState === 'speaking'}
+            isUserSpeaking={agentState === 'listening'}
+            isMicMuted={!isMicrophoneEnabled}
+          />
+        </div>
+      </div>
       <Fade top className="absolute inset-x-4 top-0 z-10 h-40" />
       {/* transcript */}
 
