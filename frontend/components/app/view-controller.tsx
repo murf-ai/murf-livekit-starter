@@ -4,20 +4,13 @@ import { useTheme } from 'next-themes';
 import { AnimatePresence, motion } from 'motion/react';
 import { useSessionContext } from '@livekit/components-react';
 import type { AppConfig } from '@/app-config';
-import { AgentSessionView_01 } from '@/components/agents-ui/blocks/agent-session-view-01';
-import { WelcomeView } from '@/components/app/welcome-view';
-
-const MotionWelcomeView = motion.create(WelcomeView);
-const MotionSessionView = motion.create(AgentSessionView_01);
+import { BharatPayWelcomeView } from '@/components/app/bharatpay-welcome-view';
+import { BharatPaySessionView } from '@/components/app/bharatpay-session-view';
 
 const VIEW_MOTION_PROPS = {
   variants: {
-    visible: {
-      opacity: 1,
-    },
-    hidden: {
-      opacity: 0,
-    },
+    visible: { opacity: 1 },
+    hidden: { opacity: 0 },
   },
   initial: 'hidden',
   animate: 'visible',
@@ -27,6 +20,9 @@ const VIEW_MOTION_PROPS = {
     ease: 'linear',
   },
 };
+
+const MotionWelcomeView = motion.create(BharatPayWelcomeView as React.ComponentType<React.ComponentProps<typeof BharatPayWelcomeView>>);
+const MotionSessionView = motion.create(BharatPaySessionView as React.ComponentType<React.ComponentProps<typeof BharatPaySessionView>>);
 
 interface ViewControllerProps {
   appConfig: AppConfig;
@@ -40,18 +36,18 @@ export function ViewController({ appConfig }: ViewControllerProps) {
     <AnimatePresence mode="wait">
       {/* Welcome view */}
       {!isConnected && (
-        <MotionWelcomeView
-          key="welcome"
-          {...VIEW_MOTION_PROPS}
-          startButtonText={appConfig.startButtonText}
-          onStartCall={start}
-        />
+        <motion.div key="welcome" {...VIEW_MOTION_PROPS} style={{ width: '100%' }}>
+          <BharatPayWelcomeView
+            startButtonText={appConfig.startButtonText}
+            onStartCall={start}
+          />
+        </motion.div>
       )}
+
       {/* Session view */}
       {isConnected && (
-        <MotionSessionView
+        <BharatPaySessionView
           key="session-view"
-          {...VIEW_MOTION_PROPS}
           supportsChatInput={appConfig.supportsChatInput}
           supportsVideoInput={appConfig.supportsVideoInput}
           supportsScreenShare={appConfig.supportsScreenShare}

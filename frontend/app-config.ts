@@ -37,23 +37,23 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   // BharatPay — Pooja Voice Support Agent (#VoiceForBharat)
   companyName: 'BharatPay',
   pageTitle: 'Pooja — BharatPay Voice Support',
-  pageDescription: 'Talk to Pooja, your BharatPay AI support agent — UPI, payments, loans, and more, powered by Murf Falcon TTS.',
+  pageDescription: 'Talk to Pooja, your BharatPay AI support agent — UPI, payments, loans, and more, powered by Murf Falcon TTS. #VoiceForBharat',
 
   supportsChatInput: true,
-  supportsVideoInput: true,
-  supportsScreenShare: true,
+  supportsVideoInput: false,
+  supportsScreenShare: false,
   isPreConnectBufferEnabled: true,
 
-  logo: '/murf-logo.svg',
-  accent: '#15803d',         // Deep trust green — finance and payments
-  logoDark: '/murf-logo-dark.svg',
-  accentDark: '#4ade80',     // Lighter green for dark mode
+  logo: '/bharatpay-logo.png',
+  accent: '#1a237e',         // Deep trust indigo — finance and payments
+  logoDark: '/bharatpay-logo.png',
+  accentDark: '#5c6bc0',     // Lighter indigo for dark mode
   startButtonText: 'Talk to Pooja',
 
   // Aura visualizer — alive and conversational
   audioVisualizerType: 'aura',
-  audioVisualizerColor: '#15803d',
-  audioVisualizerColorDark: '#4ade80',
+  audioVisualizerColor: '#1a237e',
+  audioVisualizerColorDark: '#7986cb',
 
   // agent dispatch configuration
   agentName: process.env.AGENT_NAME ?? undefined,
