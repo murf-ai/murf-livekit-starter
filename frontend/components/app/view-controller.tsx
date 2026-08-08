@@ -38,7 +38,6 @@ export function ViewController({ appConfig }: ViewControllerProps) {
 
   return (
     <AnimatePresence mode="wait">
-      {/* Welcome view */}
       {!isConnected && (
         <MotionWelcomeView
           key="welcome"
@@ -47,7 +46,7 @@ export function ViewController({ appConfig }: ViewControllerProps) {
           onStartCall={start}
         />
       )}
-      {/* Session view */}
+
       {isConnected && (
         <MotionSessionView
           key="session-view"
@@ -65,10 +64,16 @@ export function ViewController({ appConfig }: ViewControllerProps) {
           audioVisualizerColorShift={appConfig.audioVisualizerColorShift}
           audioVisualizerBarCount={appConfig.audioVisualizerBarCount}
           audioVisualizerGridRowCount={appConfig.audioVisualizerGridRowCount}
-          audioVisualizerGridColumnCount={appConfig.audioVisualizerGridColumnCount}
-          audioVisualizerRadialBarCount={appConfig.audioVisualizerRadialBarCount}
+          audioVisualizerGridColumnCount={
+            appConfig.audioVisualizerGridColumnCount
+          }
+          audioVisualizerRadialBarCount={
+            appConfig.audioVisualizerRadialBarCount
+          }
           audioVisualizerRadialRadius={appConfig.audioVisualizerRadialRadius}
-          audioVisualizerWaveLineWidth={appConfig.audioVisualizerWaveLineWidth}
+          audioVisualizerWaveLineWidth={
+            appConfig.audioVisualizerWaveLineWidth
+          }
           className="fixed inset-0"
         />
       )}
