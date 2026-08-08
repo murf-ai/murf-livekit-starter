@@ -1,19 +1,84 @@
-import { Button } from '@/components/ui/button';
+'use client';
 
-function WelcomeImage() {
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { useMicPermission } from '@/hooks/useMicPermission';
+
+// Wheat / crop SVG icon symbolising farming
+function KrishiIcon() {
   return (
     <svg
-      width="64"
-      height="64"
-      viewBox="0 0 64 64"
+      width="72"
+      height="72"
+      viewBox="0 0 72 72"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className="text-fg0 mb-4 size-16"
+      aria-hidden="true"
+      className="mb-4"
     >
+      {/* Sun */}
+      <circle cx="36" cy="20" r="8" fill="currentColor" opacity="0.9" />
+      <line x1="36" y1="6" x2="36" y2="2" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="36" y1="38" x2="36" y2="34" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="22" y1="20" x2="18" y2="20" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="54" y1="20" x2="50" y2="20" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="26.1" y1="10.1" x2="23.3" y2="7.3" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="48.7" y1="32.7" x2="45.9" y2="29.9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="45.9" y1="10.1" x2="48.7" y2="7.3" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="23.3" y1="32.7" x2="26.1" y2="29.9" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+      {/* Wheat stalk */}
+      <line x1="36" y1="36" x2="36" y2="68" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+      {/* Wheat grains left */}
+      <ellipse cx="30" cy="42" rx="5" ry="3" fill="currentColor" opacity="0.8" transform="rotate(-30 30 42)" />
+      <ellipse cx="27" cy="51" rx="5" ry="3" fill="currentColor" opacity="0.8" transform="rotate(-30 27 51)" />
+      <ellipse cx="26" cy="60" rx="5" ry="3" fill="currentColor" opacity="0.8" transform="rotate(-30 26 60)" />
+      {/* Wheat grains right */}
+      <ellipse cx="42" cy="42" rx="5" ry="3" fill="currentColor" opacity="0.8" transform="rotate(30 42 42)" />
+      <ellipse cx="45" cy="51" rx="5" ry="3" fill="currentColor" opacity="0.8" transform="rotate(30 45 51)" />
+      <ellipse cx="46" cy="60" rx="5" ry="3" fill="currentColor" opacity="0.8" transform="rotate(30 46 60)" />
+    </svg>
+  );
+}
+
+// Spinning loader for the connecting state
+function ConnectingSpinner() {
+  return (
+    <svg
+      className="mb-4 animate-spin"
+      width="48"
+      height="48"
+      viewBox="0 0 48 48"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-label="Connecting..."
+    >
+      <circle cx="24" cy="24" r="20" stroke="currentColor" strokeWidth="4" strokeOpacity="0.2" />
       <path
-        d="M15 24V40C15 40.7957 14.6839 41.5587 14.1213 42.1213C13.5587 42.6839 12.7956 43 12 43C11.2044 43 10.4413 42.6839 9.87868 42.1213C9.31607 41.5587 9 40.7957 9 40V24C9 23.2044 9.31607 22.4413 9.87868 21.8787C10.4413 21.3161 11.2044 21 12 21C12.7956 21 13.5587 21.3161 14.1213 21.8787C14.6839 22.4413 15 23.2044 15 24ZM22 5C21.2044 5 20.4413 5.31607 19.8787 5.87868C19.3161 6.44129 19 7.20435 19 8V56C19 56.7957 19.3161 57.5587 19.8787 58.1213C20.4413 58.6839 21.2044 59 22 59C22.7956 59 23.5587 58.6839 24.1213 58.1213C24.6839 57.5587 25 56.7957 25 56V8C25 7.20435 24.6839 6.44129 24.1213 5.87868C23.5587 5.31607 22.7956 5 22 5ZM32 13C31.2044 13 30.4413 13.3161 29.8787 13.8787C29.3161 14.4413 29 15.2044 29 16V48C29 48.7957 29.3161 49.5587 29.8787 50.1213C30.4413 50.6839 31.2044 51 32 51C32.7956 51 33.5587 50.6839 34.1213 50.1213C34.6839 49.5587 35 48.7957 35 48V16C35 15.2044 34.6839 14.4413 34.1213 13.8787C33.5587 13.3161 32.7956 13 32 13ZM42 21C41.2043 21 40.4413 21.3161 39.8787 21.8787C39.3161 22.4413 39 23.2044 39 24V40C39 40.7957 39.3161 41.5587 39.8787 42.1213C40.4413 42.6839 41.2043 43 42 43C42.7957 43 43.5587 42.6839 44.1213 42.1213C44.6839 41.5587 45 40.7957 45 40V24C45 23.2044 44.6839 22.4413 44.1213 21.8787C43.5587 21.3161 42.7957 21 42 21ZM52 17C51.2043 17 50.4413 17.3161 49.8787 17.8787C49.3161 18.4413 49 19.2044 49 20V44C49 44.7957 49.3161 45.5587 49.8787 46.1213C50.4413 46.6839 51.2043 47 52 47C52.7957 47 53.5587 46.6839 54.1213 46.1213C54.6839 45.5587 55 44.7957 55 44V20C55 19.2044 54.6839 18.4413 54.1213 17.8787C53.5587 17.3161 52.7957 17 52 17Z"
-        fill="currentColor"
+        d="M44 24A20 20 0 0 0 24 4"
+        stroke="currentColor"
+        strokeWidth="4"
+        strokeLinecap="round"
       />
+    </svg>
+  );
+}
+
+// Microphone blocked icon
+function MicBlockedIcon() {
+  return (
+    <svg
+      width="48"
+      height="48"
+      viewBox="0 0 48 48"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      className="mb-3 text-red-500"
+    >
+      <rect x="16" y="6" width="16" height="24" rx="8" fill="currentColor" opacity="0.15" stroke="currentColor" strokeWidth="2" />
+      <line x1="8" y1="8" x2="40" y2="40" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      <path d="M10 24a14 14 0 0 0 28 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeOpacity="0.4" />
+      <line x1="24" y1="38" x2="24" y2="44" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeOpacity="0.4" />
     </svg>
   );
 }
@@ -28,36 +93,146 @@ export const WelcomeView = ({
   onStartCall,
   ref,
 }: React.ComponentProps<'div'> & WelcomeViewProps) => {
-  return (
-    <div ref={ref}>
-      <section className="bg-background flex flex-col items-center justify-center text-center">
-        <WelcomeImage />
+  const { permissionState, requestMicPermission } = useMicPermission();
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [micError, setMicError] = useState(false);
 
-        <p className="text-foreground max-w-prose pt-1 leading-6 font-medium">
-          Chat live with your voice AI agent
+  const handleStart = async () => {
+    // If permission is explicitly denied, show the error panel
+    if (permissionState === 'denied') {
+      setMicError(true);
+      return;
+    }
+
+    // For 'prompt' or 'unknown', ask first so we can catch the denial early
+    if (permissionState === 'prompt' || permissionState === 'unknown') {
+      const granted = await requestMicPermission();
+      if (!granted) {
+        setMicError(true);
+        return;
+      }
+    }
+
+    setIsConnecting(true);
+    onStartCall();
+  };
+
+  // ── Mic permission denied panel ─────────────────────────────────────────────
+  if (micError || permissionState === 'denied') {
+    return (
+      <div ref={ref} className="flex flex-col items-center justify-center text-center px-6 max-w-sm mx-auto">
+        <MicBlockedIcon />
+        <h2 className="text-foreground text-lg font-bold mb-2">Microphone Access Blocked</h2>
+        <p className="text-muted-foreground text-sm mb-1 leading-relaxed">
+          <span className="font-semibold text-foreground">माइक की अनुमति नहीं मिली।</span>
         </p>
-
+        <p className="text-muted-foreground text-sm mb-5 leading-relaxed">
+          KrishiMitra AI को आपसे बात करने के लिए माइक्रोफोन की जरूरत है।
+          Please enable microphone access in your browser settings and refresh this page.
+        </p>
+        <div className="rounded-lg border border-border bg-muted/50 p-4 text-left text-xs text-muted-foreground w-full mb-4 space-y-1">
+          <p className="font-semibold text-foreground mb-1">How to enable:</p>
+          <p>🔒 <strong>Chrome/Edge:</strong> Click the lock icon in the address bar → Microphone → Allow</p>
+          <p>🦊 <strong>Firefox:</strong> Click the shield icon → Permissions → Allow Microphone</p>
+          <p>🍎 <strong>Safari:</strong> Safari menu → Settings for This Website → Microphone → Allow</p>
+        </div>
         <Button
           size="lg"
-          onClick={onStartCall}
-          className="mt-6 w-64 rounded-full font-mono text-xs font-bold tracking-wider uppercase"
+          variant="outline"
+          onClick={() => {
+            setMicError(false);
+            window.location.reload();
+          }}
+          className="rounded-full font-mono text-xs font-bold tracking-wider uppercase"
         >
-          {startButtonText}
+          Refresh Page / पेज रिफ्रेश करें
         </Button>
-      </section>
+      </div>
+    );
+  }
 
-      <div className="fixed bottom-5 left-0 flex w-full items-center justify-center">
-        <p className="text-muted-foreground max-w-prose pt-1 text-xs leading-5 font-normal text-pretty md:text-sm">
-          Need help getting set up? Check out the{' '}
+  // ── Connecting state ──────────────────────────────────────────────────────────
+  if (isConnecting) {
+    return (
+      <div ref={ref} className="flex flex-col items-center justify-center text-center px-6">
+        <div className="text-[var(--krishi-accent)]">
+          <ConnectingSpinner />
+        </div>
+        <p className="text-foreground text-base font-semibold">Connecting...</p>
+        <p className="text-muted-foreground text-sm mt-1">
+          KrishiMitra AI se judh rahe hain, thodi der ruko…
+        </p>
+      </div>
+    );
+  }
+
+  // ── Default welcome panel ──────────────────────────────────────────────────
+  return (
+    <div ref={ref} className="flex flex-col items-center justify-center text-center px-4">
+      {/* Brand icon */}
+      <div className="text-[var(--krishi-accent)] drop-shadow-sm">
+        <KrishiIcon />
+      </div>
+
+      {/* Brand name */}
+      <h1 className="text-foreground text-2xl font-bold tracking-tight mb-1">
+        KrishiMitra AI
+      </h1>
+
+      {/* Tagline — bilingual */}
+      <p className="text-muted-foreground text-sm mb-1 font-medium">
+        आपका डिजिटल कृषि सहायक
+      </p>
+      <p className="text-muted-foreground text-xs mb-5 max-w-xs leading-relaxed">
+        Crops · Irrigation · Soil · Govt. Schemes · Organic Farming
+      </p>
+
+      {/* Feature chips */}
+      <div className="flex flex-wrap justify-center gap-2 mb-6 max-w-xs">
+        {['🌾 Fasal Salah', '💧 Sinchai', '🌱 Mitti', '📋 Yojana', '🌿 Organic'].map((chip) => (
+          <span
+            key={chip}
+            className="rounded-full border border-[var(--krishi-accent)]/30 bg-[var(--krishi-accent)]/10 px-3 py-0.5 text-xs font-medium text-[var(--krishi-accent)]"
+          >
+            {chip}
+          </span>
+        ))}
+      </div>
+
+      {/* CTA button */}
+      <Button
+        size="lg"
+        onClick={handleStart}
+        className="w-64 rounded-full font-mono text-xs font-bold tracking-wider uppercase bg-[var(--krishi-accent)] text-white hover:bg-[var(--krishi-accent)]/90 active:scale-95 transition-transform"
+      >
+        {startButtonText}
+      </Button>
+
+      <p className="text-muted-foreground text-xs mt-4 max-w-xs leading-relaxed">
+        Hindi, English, ya mixed language — sab chalta hai 🙏
+      </p>
+
+      {/* Powered-by footer */}
+      <div className="fixed bottom-5 left-0 flex w-full items-center justify-center gap-1">
+        <p className="text-muted-foreground text-xs leading-5">
+          Powered by{' '}
           <a
             target="_blank"
             rel="noopener noreferrer"
-            href="https://docs.livekit.io/agents/start/voice-ai/"
-            className="underline"
+            href="https://murf.ai/api"
+            className="underline underline-offset-2"
           >
-            Voice AI quickstart
+            Murf Falcon TTS
           </a>
-          .
+          {' '}·{' '}
+          <a
+            target="_blank"
+            rel="noopener noreferrer"
+            href="https://livekit.io"
+            className="underline underline-offset-2"
+          >
+            LiveKit
+          </a>
         </p>
       </div>
     </div>

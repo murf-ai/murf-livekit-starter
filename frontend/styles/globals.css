@@ -6,6 +6,12 @@
 
 :root {
   --radius: 0.625rem;
+  /* KrishiMitra brand colours */
+  --krishi-accent: #2d7a3a;
+  --krishi-accent-light: #4ade80;
+  --krishi-accent-muted: rgba(45, 122, 58, 0.12);
+  --krishi-earth: #8b5e3c;
+  --krishi-sun: #f59e0b;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -40,6 +46,10 @@
 }
 
 .dark {
+  /* KrishiMitra — brighter green in dark mode */
+  --krishi-accent: #4ade80;
+  --krishi-accent-light: #86efac;
+  --krishi-accent-muted: rgba(74, 222, 128, 0.12);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);

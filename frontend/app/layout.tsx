@@ -75,27 +75,22 @@ export default async function RootLayout({ children }: RootLayoutProps) {
             <a
               target="_blank"
               rel="noopener noreferrer"
-              href="https://livekit.io"
-              className="scale-100 transition-transform duration-300 hover:scale-110"
+              href="https://murf.ai/api"
+              className="flex items-center gap-2 scale-100 transition-transform duration-300 hover:scale-110"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logo} alt={`${companyName} Logo`} className="block size-6 dark:hidden" />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={logoDark ?? logo}
-                alt={`${companyName} Logo`}
-                className="hidden size-6 dark:block"
-              />
+              <span className="text-[var(--krishi-accent)] font-bold text-sm tracking-tight">
+                🌾 KrishiMitra AI
+              </span>
             </a>
             <span className="text-foreground font-mono text-xs font-bold tracking-wider uppercase">
-              Built with{' '}
+              Powered by{' '}
               <a
                 target="_blank"
                 rel="noopener noreferrer"
-                href="https://docs.livekit.io/agents"
+                href="https://murf.ai/api/docs/text-to-speech/streaming"
                 className="underline underline-offset-4"
               >
-                LiveKit Agents
+                Murf Falcon TTS
               </a>
             </span>
           </header>
