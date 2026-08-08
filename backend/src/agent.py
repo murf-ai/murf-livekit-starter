@@ -75,7 +75,6 @@ async def my_agent(ctx: JobContext):
         tts=murf.TTS(
                 voice="Anusha",
                 locale="en-IN",
-                voice="Anisha", 
                 style="Conversation",
                 tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
                 text_pacing=True
