@@ -15,6 +15,7 @@ from livekit.agents import (
     room_io,
     tokenize,
 )
+from livekit.agents.llm import StopResponse
 from livekit.plugins import deepgram, google, murf, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
@@ -207,9 +208,34 @@ class Assistant(Agent):
     ) -> None:
         """Lock language for this turn without polluting history or stacking locks."""
         text = new_message.text_content or ""
-        # Ignore empty / noise turns so we do not thrash language state.
-        if not text.strip():
-            return
+        text_clean = text.strip().lower()
+        words = re.findall(r"[a-zA-Z\u0900-\u097F']+", text_clean)
+
+        # Drop empty / filler / ultra-short STT hallucinations (often echo fragments).
+        noise = {
+            "[music]",
+            "[applause]",
+            "[noise]",
+            ".",
+            "..",
+            "...",
+            "huh",
+            "uh",
+            "um",
+            "hmm",
+            "mm",
+            "mhm",
+            "ah",
+            "oh",
+        }
+        if (
+            not text_clean
+            or text_clean in noise
+            or len(words) < 2
+            or len(text_clean) < 6
+        ):
+            logger.info("Ignoring noise/echo transcript: %r", text)
+            raise StopResponse()
 
         reply_lang = await self.apply_language(text, self._last_stt_language)
 
@@ -235,7 +261,13 @@ server = AgentServer()
 
 
 def prewarm(proc: JobProcess):
-    proc.userdata["vad"] = silero.VAD.load()
+    # Stricter VAD so speaker echo / room noise is less likely to start a turn.
+    proc.userdata["vad"] = silero.VAD.load(
+        min_speech_duration=0.35,
+        min_silence_duration=0.7,
+        activation_threshold=0.65,
+        prefix_padding_duration=0.3,
+    )
 
 
 server.setup_fnc = prewarm
@@ -247,23 +279,45 @@ async def my_agent(ctx: JobContext):
         "room": ctx.room.name,
     }
 
+    # Free-tier Gemini quotas are per-model. Rotate across 3 lite models so a
+    # single 429 / exhausted quota does not kill the session.
+    gemini_models = (
+        "gemini-flash-lite-latest",
+        "gemini-2.0-flash-lite",
+        "gemini-2.5-flash-lite",
+    )
+    # Gemini rejects deadlines under 10s ("Manually set deadline is too short").
+    llm_stack = llm.FallbackAdapter(
+        [google.LLM(model=name) for name in gemini_models],
+        attempt_timeout=20.0,
+        max_retry_per_llm=1,
+        retry_interval=0.5,
+    )
+    logger.info("LLM fallback stack: %s", ", ".join(gemini_models))
+
     session = AgentSession(
         stt=deepgram.STT(model="nova-3", language="multi"),
-        # Free-tier quotas are per model. gemini-2.5-flash / 2.0-flash hit 429
-        # (20 req/day). gemini-flash-lite-latest still has quota and works.
-        llm=google.LLM(
-            model="gemini-flash-lite-latest",
-        ),
+        llm=llm_stack,
         tts=murf.TTS(
-            voice=VOICE_HI,
+            voice="Anisha",  # dynamic voice key (not hardcoded locale)
             style="Conversation",
             tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
             text_pacing=True,
         ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        # Avoid racing a second reply before the user finished speaking.
+        # Echo/spam guards: do not pre-fire LLM on partial noise, require real
+        # speech before interrupting the agent, give AEC time to warm up.
         preemptive_generation=False,
+        allow_interruptions=True,
+        min_interruption_duration=1.0,
+        min_interruption_words=3,
+        min_endpointing_delay=0.8,
+        max_endpointing_delay=3.0,
+        false_interruption_timeout=2.0,
+        resume_false_interruption=True,
+        aec_warmup_duration=5.0,
+        discard_audio_if_uninterruptible=True,
     )
 
     agent = Assistant()
@@ -299,8 +353,8 @@ async def my_agent(ctx: JobContext):
 
     await ctx.connect()
 
-    # One greeting only; user can interrupt immediately.
-    await session.say(FIRST_GREETING, allow_interruptions=True)
+    # Greeting is uninterruptible so its own audio cannot echo into a new turn.
+    await session.say(FIRST_GREETING, allow_interruptions=False)
 
 
 if __name__ == "__main__":

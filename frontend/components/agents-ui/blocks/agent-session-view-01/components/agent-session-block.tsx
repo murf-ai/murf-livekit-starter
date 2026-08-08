@@ -9,6 +9,7 @@ import {
   type AgentControlBarControls,
 } from '@/components/agents-ui/agent-control-bar';
 import { Shimmer } from '@/components/ai-elements/shimmer';
+import { SpeakerStatusBadge } from '@/components/app/speaker-status-badge';
 import { cn } from '@/lib/shadcn/utils';
 import { TileLayout } from './tile-view';
 
@@ -206,13 +207,46 @@ export function AgentSessionView_01({
   return (
     <section
       ref={ref}
-      className={cn('bg-background relative z-10 h-full w-full overflow-hidden', className)}
+      className={cn(
+        'relative z-10 h-full w-full overflow-hidden bg-transparent',
+        className
+      )}
       {...props}
     >
       <Fade top className="absolute inset-x-4 top-0 z-10 h-40" />
-      {/* transcript */}
 
-      <div className="absolute top-0 bottom-[135px] flex w-full flex-col md:bottom-[170px]">
+      {/* Top Header Status Badge */}
+      <div className="pointer-events-none absolute inset-x-0 top-4 z-40 flex flex-col items-center justify-center gap-2">
+        <SpeakerStatusBadge
+          state={
+            agentState === 'speaking'
+              ? 'speaking'
+              : agentState === 'thinking'
+                ? 'thinking'
+                : agentState === 'connecting' || agentState === 'initializing'
+                  ? 'connecting'
+                  : 'listening'
+          }
+          className="pointer-events-auto shadow-2xl"
+        />
+      </div>
+
+      {/* Avatar sits above chat (z-20). Chat is z-30 so messages are never covered. */}
+      <TileLayout
+        chatOpen={chatOpen}
+        audioVisualizerType={audioVisualizerType}
+        audioVisualizerColor={audioVisualizerColor}
+        audioVisualizerColorShift={audioVisualizerColorShift}
+        audioVisualizerBarCount={audioVisualizerBarCount}
+        audioVisualizerRadialBarCount={audioVisualizerRadialBarCount}
+        audioVisualizerRadialRadius={audioVisualizerRadialRadius}
+        audioVisualizerGridRowCount={audioVisualizerGridRowCount}
+        audioVisualizerGridColumnCount={audioVisualizerGridColumnCount}
+        audioVisualizerWaveLineWidth={audioVisualizerWaveLineWidth}
+      />
+
+      {/* transcript — below the compact avatar when chat is open */}
+      <div className="absolute top-0 bottom-[135px] z-30 flex w-full flex-col md:bottom-[170px]">
         <AnimatePresence>
           {chatOpen && (
             <motion.div
@@ -222,7 +256,7 @@ export function AgentSessionView_01({
               <AgentChatTranscript
                 agentState={agentState}
                 messages={messages}
-                className="mx-auto w-full max-w-2xl [&_.is-user>div]:rounded-[22px] [&>div>div]:px-4 [&>div>div]:pt-40 md:[&>div>div]:px-6"
+                className="mx-auto w-full max-w-2xl [&_.is-user>div]:rounded-[22px] [&>div>div]:px-4 [&>div>div]:pt-[11.5rem] md:[&>div>div]:px-6 md:[&>div>div]:pt-48"
               />
             </motion.div>
           )}
@@ -239,26 +273,13 @@ export function AgentSessionView_01({
               transition={{ duration: 0.2 }}
               className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex justify-center md:inset-x-12"
             >
-              <p className="bg-background/85 text-foreground border-border max-w-2xl rounded-2xl border px-4 py-3 text-center text-sm leading-relaxed shadow-lg backdrop-blur-md md:text-base">
+              <p className="max-w-2xl rounded-2xl border border-white/10 bg-slate-950/85 px-4 py-3 text-center text-sm leading-relaxed text-white shadow-lg backdrop-blur-md md:text-base">
                 {latestAgentSubtitle}
               </p>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
-      {/* Tile layout */}
-      <TileLayout
-        chatOpen={chatOpen}
-        audioVisualizerType={audioVisualizerType}
-        audioVisualizerColor={audioVisualizerColor}
-        audioVisualizerColorShift={audioVisualizerColorShift}
-        audioVisualizerBarCount={audioVisualizerBarCount}
-        audioVisualizerRadialBarCount={audioVisualizerRadialBarCount}
-        audioVisualizerRadialRadius={audioVisualizerRadialRadius}
-        audioVisualizerGridRowCount={audioVisualizerGridRowCount}
-        audioVisualizerGridColumnCount={audioVisualizerGridColumnCount}
-        audioVisualizerWaveLineWidth={audioVisualizerWaveLineWidth}
-      />
       {/* Bottom */}
       <motion.div
         {...BOTTOM_VIEW_MOTION_PROPS}
