@@ -180,6 +180,12 @@ export function AgentSessionView_01({
   const [chatOpen, setChatOpen] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { state: agentState } = useAgent();
+  const status =
+    agentState === 'speaking'
+      ? { label: 'Mitra is speaking', hindi: 'मित्र बोल रहा है', color: 'bg-orange-500' }
+      : agentState === 'listening'
+        ? { label: 'Listening to you', hindi: 'मैं सुन रहा हूँ', color: 'bg-emerald-500' }
+        : { label: 'Mitra is thinking', hindi: 'बस एक पल', color: 'bg-amber-500' };
 
   const controls: AgentControlBarControls = {
     leave: true,
@@ -204,6 +210,16 @@ export function AgentSessionView_01({
       className={cn('bg-background relative z-10 h-full w-full overflow-hidden', className)}
       {...props}
     >
+      <div
+        className="absolute top-5 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-3 rounded-full border border-orange-200/70 bg-white/90 px-4 py-2 shadow-lg shadow-orange-950/5 backdrop-blur dark:border-orange-900 dark:bg-stone-900/90"
+        aria-live="polite"
+      >
+        <span className={cn('size-2.5 rounded-full', status.color, agentState === 'speaking' && 'animate-pulse')} />
+        <div className="whitespace-nowrap">
+          <span className="text-sm font-semibold">{status.label}</span>
+          <span className="ml-2 text-xs text-stone-500 dark:text-stone-400">{status.hindi}</span>
+        </div>
+      </div>
       <Fade top className="absolute inset-x-4 top-0 z-10 h-40" />
       {/* transcript */}
 

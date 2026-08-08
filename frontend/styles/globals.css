@@ -122,3 +122,17 @@
     @apply bg-background text-foreground;
   }
 }
+
+.mitra-shell {
+  background:
+    radial-gradient(circle at 10% 15%, color-mix(in srgb, #fb923c 15%, transparent), transparent 30%),
+    radial-gradient(circle at 90% 80%, color-mix(in srgb, #047857 12%, transparent), transparent 28%),
+    linear-gradient(145deg, #fffaf2 0%, #fff 48%, #f6fbf7 100%);
+}
+
+.dark .mitra-shell {
+  background:
+    radial-gradient(circle at 10% 15%, color-mix(in srgb, #c2410c 20%, transparent), transparent 32%),
+    radial-gradient(circle at 90% 80%, color-mix(in srgb, #047857 16%, transparent), transparent 30%),
+    #17130f;
+}
