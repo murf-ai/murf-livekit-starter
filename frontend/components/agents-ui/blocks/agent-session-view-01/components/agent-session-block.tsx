@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { Track } from 'livekit-client';
+import { AlertTriangle, Mic, ShieldCheck, Volume2 } from 'lucide-react';
 import { AnimatePresence, type MotionProps, motion } from 'motion/react';
 import { useAgent, useSessionContext, useSessionMessages } from '@livekit/components-react';
 import { AgentChatTranscript } from '@/components/agents-ui/agent-chat-transcript';
@@ -9,6 +11,7 @@ import {
   type AgentControlBarControls,
 } from '@/components/agents-ui/agent-control-bar';
 import { Shimmer } from '@/components/ai-elements/shimmer';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { cn } from '@/lib/shadcn/utils';
 import { TileLayout } from './tile-view';
 
@@ -178,8 +181,34 @@ export function AgentSessionView_01({
   const session = useSessionContext();
   const { messages } = useSessionMessages(session);
   const [chatOpen, setChatOpen] = useState(false);
+  const [microphoneError, setMicrophoneError] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { state: agentState } = useAgent();
+
+  const day3State =
+    agentState === 'speaking'
+      ? 'Speaking'
+      : agentState === 'listening'
+        ? 'Listening'
+        : session.isConnected
+          ? 'Connecting'
+          : 'Call ended';
+  const speakerText =
+    day3State === 'Speaking'
+      ? 'Agent is speaking'
+      : day3State === 'Listening'
+        ? 'Listening to you'
+        : day3State === 'Connecting'
+          ? 'Connecting to Suraksha Saathi'
+          : 'Call ended';
+  const StatusIcon =
+    day3State === 'Speaking'
+      ? Volume2
+      : day3State === 'Listening'
+        ? Mic
+        : day3State === 'Connecting'
+          ? ShieldCheck
+          : AlertTriangle;
 
   const controls: AgentControlBarControls = {
     leave: true,
@@ -201,10 +230,59 @@ export function AgentSessionView_01({
   return (
     <section
       ref={ref}
+      data-day3-state={day3State}
+      data-day3-speaker={speakerText}
       className={cn('bg-background relative z-10 h-full w-full overflow-hidden', className)}
       {...props}
     >
       <Fade top className="absolute inset-x-4 top-0 z-10 h-40" />
+
+      <div className="absolute inset-x-4 top-4 z-30 mx-auto flex max-w-3xl flex-col gap-3 md:top-6">
+        <div className="bg-background/95 rounded-lg border border-teal-800/15 px-4 py-3 shadow-sm backdrop-blur">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-foreground flex items-center gap-2 text-sm font-semibold">
+                <StatusIcon className="size-4 text-teal-700 dark:text-teal-300" />
+                {speakerText}
+              </p>
+              <p className="text-muted-foreground text-xs leading-5">
+                Telugu UPI fraud help. Do not share OTP, UPI PIN, CVV, or password.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs font-medium sm:grid-cols-5">
+              {['Ready', 'Connecting', 'Listening', 'Speaking', 'Call ended'].map((stateName) => {
+                const isActive = stateName === day3State;
+
+                return (
+                  <span
+                    key={stateName}
+                    className={cn(
+                      'rounded-md border px-2.5 py-1.5 text-center',
+                      isActive
+                        ? 'border-teal-700 bg-teal-700 text-white'
+                        : 'border-border bg-background text-muted-foreground'
+                    )}
+                  >
+                    {stateName}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {microphoneError && (
+          <Alert className="border-amber-500/40 bg-amber-50 text-amber-950 dark:bg-amber-950/30 dark:text-amber-100">
+            <AlertTriangle className="size-4" />
+            <AlertTitle>Microphone permission blocked</AlertTitle>
+            <AlertDescription>
+              {microphoneError} Open your browser site settings, allow microphone access, then start
+              again.
+            </AlertDescription>
+          </Alert>
+        )}
+      </div>
+
       {/* transcript */}
 
       <div className="absolute top-0 bottom-[135px] flex w-full flex-col md:bottom-[170px]">
@@ -265,6 +343,11 @@ export function AgentSessionView_01({
             isChatOpen={chatOpen}
             isConnected={session.isConnected}
             onDisconnect={session.end}
+            onDeviceError={({ source, error }) => {
+              if (source === Track.Source.Microphone) {
+                setMicrophoneError(error.message || 'The browser did not allow the microphone.');
+              }
+            }}
             onIsChatOpenChange={setChatOpen}
           />
         </div>

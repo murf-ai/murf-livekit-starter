@@ -62,7 +62,11 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   // audioVisualizerGridColumnCount: 25,
   // audioVisualizerType: 'wave',
   // audioVisualizerWaveLineWidth: 3,
-  // audioVisualizerType: 'aura',
+  audioVisualizerType: 'bar',
+  audioVisualizerColor: '#0F766E',
+  audioVisualizerColorDark: '#2DD4BF',
+  audioVisualizerColorShift: 0.18,
+  audioVisualizerBarCount: 7,
 
   // agent dispatch configuration
   agentName: process.env.AGENT_NAME ?? 'suraksha-saathi',
