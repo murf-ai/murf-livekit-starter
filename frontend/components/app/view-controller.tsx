@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import { useTheme } from 'next-themes';
 import { AnimatePresence, motion } from 'motion/react';
 import { useSessionContext } from '@livekit/components-react';
@@ -35,6 +36,45 @@ interface ViewControllerProps {
 export function ViewController({ appConfig }: ViewControllerProps) {
   const { isConnected, start } = useSessionContext();
   const { resolvedTheme } = useTheme();
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [hasCallEnded, setHasCallEnded] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+  const wasConnectedRef = useRef(false);
+
+  useEffect(() => {
+    if (isConnected) {
+      wasConnectedRef.current = true;
+      setIsConnecting(false);
+      setStartError(null);
+      return;
+    }
+
+    if (wasConnectedRef.current) {
+      setHasCallEnded(true);
+      wasConnectedRef.current = false;
+      setIsConnecting(false);
+    }
+  }, [isConnected]);
+
+  const handleStartCall = async () => {
+    setIsConnecting(true);
+    setHasCallEnded(false);
+    setStartError(null);
+
+    try {
+      await start();
+    } catch (error) {
+      console.error(error);
+      setIsConnecting(false);
+      const message = error instanceof Error ? error.message : '';
+      const looksLikeMicError = /microphone|permission|denied|notallowed/i.test(message);
+      setStartError(
+        looksLikeMicError
+          ? 'Microphone permission blocked. Open your browser site settings, allow microphone access, then start again.'
+          : 'Call could not start. Check your connection and microphone permission, then start again.'
+      );
+    }
+  };
 
   return (
     <AnimatePresence mode="wait">
@@ -43,8 +83,10 @@ export function ViewController({ appConfig }: ViewControllerProps) {
         <MotionWelcomeView
           key="welcome"
           {...VIEW_MOTION_PROPS}
-          startButtonText={appConfig.startButtonText}
-          onStartCall={start}
+          startButtonText={hasCallEnded ? 'Start again' : appConfig.startButtonText}
+          state={isConnecting ? 'connecting' : hasCallEnded ? 'ended' : 'ready'}
+          microphoneError={startError}
+          onStartCall={handleStartCall}
         />
       )}
       {/* Session view */}

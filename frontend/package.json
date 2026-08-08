@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
+    "day3:check": "node scripts/verify-day3-contract.mjs",
     "start": "next start",
     "lint": "next lint",
     "format": "prettier --write .",
