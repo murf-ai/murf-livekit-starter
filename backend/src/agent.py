@@ -1,24 +1,26 @@
+import json
 import logging
 import re
 
 from dotenv import load_dotenv
-from livekit import rtc
 from livekit.agents import (
     Agent,
     AgentServer,
     AgentSession,
     JobContext,
     JobProcess,
+    RunContext,
     UserInputTranscribedEvent,
     cli,
+    function_tool,
     llm,
     room_io,
-    tokenize,
 )
 from livekit.agents.llm import StopResponse
-from livekit.plugins import deepgram, google, murf, noise_cancellation, silero
+from livekit.plugins import deepgram, google, murf, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
+import db
 from prompt import SYSTEM_PROMPT
 
 logger = logging.getLogger("agent")
@@ -120,23 +122,25 @@ def detect_reply_language(transcript: str, stt_language: str | None = None) -> s
     if not text:
         return "hi"
 
+    # Devanagari script -> Hindi
     if DEVANAGARI_RE.search(text):
         return "hi"
 
-    lang = (stt_language or "").lower().replace("_", "-")
     words = set(re.findall(r"[a-zA-Z']+", text.lower()))
     has_hindi_kw = not words.isdisjoint(HINDI_KEYWORDS)
 
-    if lang.startswith("en") and not has_hindi_kw:
-        return "en"
-    if lang.startswith("hi"):
-        return "hi"
+    # Romanized Hindi / Hinglish keywords -> Hindi
     if has_hindi_kw:
         return "hi"
+
+    # Plain ASCII text with no Hindi keywords -> English
+    if text.isascii():
+        return "en"
+
+    lang = (stt_language or "").lower().replace("_", "-")
     if lang.startswith("en"):
         return "en"
-    if text.isascii() and not has_hindi_kw:
-        return "en"
+
     return "hi"
 
 
@@ -159,6 +163,103 @@ def _strip_lang_locks(turn_ctx: llm.ChatContext) -> None:
         items[:] = keep
 
 
+# Extract a person name from common English/Hindi intro phrases.
+_NAME_PATTERNS = [
+    re.compile(
+        r"(?:my name is|i am|i'm|this is|call me)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s'.-]{1,40})",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:mera naam|meri naam|main|mai)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s'.-]{1,40})"
+        r"(?:\s+hoon|\s+hun|\s+hu|\s+hai)?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:naam hai|naam hain)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s'.-]{1,40})",
+        re.IGNORECASE,
+    ),
+]
+
+_NAME_STOPWORDS = {
+    "jan",
+    "sahay",
+    "hello",
+    "hi",
+    "hey",
+    "namaste",
+    "please",
+    "help",
+    "here",
+    "looking",
+    "calling",
+    "user",
+    "agent",
+    "yes",
+    "no",
+    "ok",
+    "okay",
+    "the",
+    "a",
+    "an",
+}
+
+
+def extract_caller_name(text: str) -> str | None:
+    """Best-effort name extraction from a user utterance."""
+    raw = (text or "").strip()
+    if not raw:
+        return None
+
+    for pattern in _NAME_PATTERNS:
+        match = pattern.search(raw)
+        if not match:
+            continue
+        candidate = match.group(1).strip(" .,!?:;\"'")
+        # Keep first 3 tokens max (e.g. "Raj Kumar Sharma")
+        parts = [p for p in re.split(r"\s+", candidate) if p]
+        parts = parts[:3]
+        if not parts:
+            continue
+        # Drop trailing filler words
+        while parts and parts[-1].lower() in {
+            "hoon",
+            "hun",
+            "hu",
+            "hai",
+            "and",
+            "ji",
+            "sir",
+            "madam",
+        }:
+            parts.pop()
+        if not parts:
+            continue
+        if any(p.lower() in _NAME_STOPWORDS for p in parts):
+            continue
+        if all(len(p) <= 1 for p in parts):
+            continue
+        name = " ".join(parts).strip()
+        if 1 < len(name) <= 40:
+            return name.title() if name.isascii() else name
+    return None
+
+
+def _format_memory_note(caller: dict) -> str:
+    """Compact system note so the LLM can greet returning callers."""
+    name = caller.get("name") or caller.get("user_id") or "caller"
+    facts = caller.get("facts") or {}
+    facts_bits = []
+    for key, value in list(facts.items())[:6]:
+        facts_bits.append(f"{key}={value}")
+    facts_txt = "; ".join(facts_bits) if facts_bits else "no saved scheme facts yet"
+    lang = caller.get("language_preference") or "unknown"
+    return (
+        f"{_LANG_LOCK_PREFIX} RETURNING CALLER MEMORY: name={name}; "
+        f"language_preference={lang}; facts=[{facts_txt}]. "
+        f"Greet them by name, mention you remember them, and reference useful facts briefly."
+    )
+
+
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(
@@ -168,6 +269,88 @@ class Assistant(Agent):
         self._reply_lang = "hi"
         self._last_stt_language: str | None = None
         self._voice = VOICE_HI
+        self._known_caller_name: str | None = None
+        self._memory_loaded = False
+
+    @function_tool
+    async def lookup_caller(self, ctx: RunContext, name_or_id: str) -> str:
+        """Lookup stored caller profile and memory facts by name or user_id (e.g. 'Ramesh').
+        Call this tool when a caller introduces themselves by name or asks if you remember them.
+        """
+        caller = db.get_caller(name_or_id)
+        if not caller:
+            return f"No record found for '{name_or_id}'."
+        self._known_caller_name = caller.get("name") or name_or_id
+        self._memory_loaded = True
+        return json.dumps(caller)
+
+    @function_tool
+    async def save_caller_memory(
+        self,
+        ctx: RunContext,
+        name: str,
+        facts: dict | None = None,
+        language_preference: str | None = None,
+    ) -> str:
+        """Save caller profile and facts (such as schemes checked, eligibility answers) keyed by name.
+        Call this tool when the user provides their name to save the conversation (e.g. 'My name is Raj').
+        STRICT PRIVACY RULE: Do NOT store account numbers, Aadhaar, PAN, PIN, or OTP.
+        """
+        clean_name = (name or "").strip()
+        if not clean_name:
+            return json.dumps({"saved": False, "message": "Name is required."})
+        user_id = clean_name.lower().replace(" ", "_")
+        res = db.save_caller(
+            user_id=user_id,
+            name=clean_name,
+            language_preference=language_preference or self._reply_lang,
+            facts=facts or {},
+            consent_given=True,
+        )
+        self._known_caller_name = clean_name
+        self._memory_loaded = True
+        logger.info("save_caller_memory saved profile for %s: %s", clean_name, res)
+        return json.dumps(res)
+
+    def _auto_memory_for_turn(
+        self, turn_ctx: llm.ChatContext, text: str
+    ) -> None:
+        """Lookup/save memory from name phrases without waiting on the LLM tool call."""
+        name = extract_caller_name(text)
+        if not name:
+            # If caller already known this session, still touch last_interaction lightly
+            return
+
+        existing = db.get_caller(name)
+        if existing:
+            self._known_caller_name = existing.get("name") or name
+            self._memory_loaded = True
+            _strip_lang_locks(turn_ctx)
+            turn_ctx.add_message(role="system", content=_format_memory_note(existing))
+            # Refresh last_interaction timestamp
+            db.save_caller(
+                user_id=existing["user_id"],
+                name=existing.get("name") or name,
+                language_preference=existing.get("language_preference")
+                or self._reply_lang,
+                facts={},
+                consent_given=True,
+            )
+            logger.info("Auto-loaded returning caller memory for %s", name)
+            return
+
+        # First-time name mention: create a lightweight profile so next call can recall them.
+        user_id = name.lower().replace(" ", "_")
+        res = db.save_caller(
+            user_id=user_id,
+            name=name,
+            language_preference=self._reply_lang,
+            facts={"introduced_via": "auto_name_detect"},
+            consent_given=True,
+        )
+        self._known_caller_name = name
+        self._memory_loaded = True
+        logger.info("Auto-saved new caller profile for %s: %s", name, res)
 
     def note_stt_language(self, language: str | None, transcript: str) -> None:
         if language:
@@ -239,7 +422,15 @@ class Assistant(Agent):
 
         reply_lang = await self.apply_language(text, self._last_stt_language)
 
+        # Cross-call memory: auto lookup/save when user shares a name.
+        try:
+            self._auto_memory_for_turn(turn_ctx, text)
+        except Exception as err:  # noqa: BLE001 - never block the reply path
+            logger.warning("Auto memory hook failed: %s", err)
+
         # Keep at most ONE ephemeral language lock in context (replace, never stack).
+        # If a returning-caller memory note was just injected, keep it (same prefix family
+        # is stripped only for pure LANG locks below via content check).
         _strip_lang_locks(turn_ctx)
         if reply_lang == "en":
             lock = (
@@ -254,18 +445,26 @@ class Assistant(Agent):
                 "Scheme approval kabhi guarantee mat karo."
             )
         turn_ctx.add_message(role="system", content=lock)
+
+        # Re-attach memory note AFTER lang lock strip so it survives this turn.
+        if self._known_caller_name and self._memory_loaded:
+            caller = db.get_caller(self._known_caller_name)
+            if caller:
+                turn_ctx.add_message(role="system", content=_format_memory_note(caller))
+
         logger.info("Turn language lock set once: %s", reply_lang)
 
 
-server = AgentServer()
+# Keep one warm process so the next call after END CALL joins quickly.
+server = AgentServer(num_idle_processes=1)
 
 
 def prewarm(proc: JobProcess):
     # Stricter VAD so speaker echo / room noise is less likely to start a turn.
     proc.userdata["vad"] = silero.VAD.load(
-        min_speech_duration=0.35,
-        min_silence_duration=0.7,
-        activation_threshold=0.65,
+        min_speech_duration=0.5,
+        min_silence_duration=0.8,
+        activation_threshold=0.75,
         prefix_padding_duration=0.3,
     )
 
@@ -279,12 +478,11 @@ async def my_agent(ctx: JobContext):
         "room": ctx.room.name,
     }
 
-    # Free-tier Gemini quotas are per-model. Rotate across 3 lite models so a
-    # single 429 / exhausted quota does not kill the session.
+    # Prefer models that still have free-tier quota (2.0-flash* is exhausted).
     gemini_models = (
-        "gemini-flash-lite-latest",
-        "gemini-2.0-flash-lite",
-        "gemini-2.5-flash-lite",
+        "gemini-2.5-flash",
+        "gemini-3.5-flash",
+        "gemini-flash-latest",
     )
     # Gemini rejects deadlines under 10s ("Manually set deadline is too short").
     llm_stack = llm.FallbackAdapter(
@@ -299,15 +497,12 @@ async def my_agent(ctx: JobContext):
         stt=deepgram.STT(model="nova-3", language="multi"),
         llm=llm_stack,
         tts=murf.TTS(
-            voice="Anisha",  # dynamic voice key (not hardcoded locale)
+            voice=VOICE_HI,
             style="Conversation",
-            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
             text_pacing=True,
         ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        # Echo/spam guards: do not pre-fire LLM on partial noise, require real
-        # speech before interrupting the agent, give AEC time to warm up.
         preemptive_generation=False,
         allow_interruptions=True,
         min_interruption_duration=1.0,
@@ -334,27 +529,43 @@ async def my_agent(ctx: JobContext):
             (ev.transcript or "")[:120],
         )
 
+    # CRITICAL: connect to room FIRST, then start session
+    await ctx.connect()
+    db.init_db()
+    logger.info("Room connected, starting agent session for %s", ctx.room.name)
+
     await session.start(
         agent=agent,
         room=ctx.room,
         room_options=room_io.RoomOptions(
             text_input=True,
             text_output=True,
-            audio_input=room_io.AudioInputOptions(
-                noise_cancellation=lambda params: (
-                    noise_cancellation.BVCTelephony()
-                    if params.participant.kind
-                    == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
-                    else noise_cancellation.BVC()
-                ),
-            ),
         ),
     )
 
-    await ctx.connect()
+    async def cleanup():
+        # Persist a light breadcrumb if we learned a name this call.
+        if agent._known_caller_name:
+            try:
+                db.save_caller(
+                    user_id=agent._known_caller_name.lower().replace(" ", "_"),
+                    name=agent._known_caller_name,
+                    language_preference=agent._reply_lang,
+                    facts={"last_room": ctx.room.name},
+                    consent_given=True,
+                )
+            except Exception as err:  # noqa: BLE001
+                logger.warning("Failed to persist session breadcrumb: %s", err)
+        logger.info("Session finished cleanly for room: %s", ctx.room.name)
 
-    # Greeting is uninterruptible so its own audio cannot echo into a new turn.
-    await session.say(FIRST_GREETING, allow_interruptions=False)
+    ctx.add_shutdown_callback(cleanup)
+
+    # Greeting after session is fully connected.
+    # allow_interruptions=True so text/voice input during greeting is not dropped.
+    try:
+        await session.say(FIRST_GREETING, allow_interruptions=True)
+    except Exception as err:
+        logger.error("Error playing initial greeting: %s", err)
 
 
 if __name__ == "__main__":

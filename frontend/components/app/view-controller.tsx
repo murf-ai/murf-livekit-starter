@@ -54,10 +54,14 @@ export function ViewController({ appConfig }: ViewControllerProps) {
   }, [isConnected]);
 
   // Handle End Call Transition
-  const handleDisconnect = () => {
-    end();
-    setIsCallEnded(true);
+  const handleDisconnect = async () => {
     setIsConnectingManual(false);
+    setIsCallEnded(true);
+    try {
+      await end();
+    } catch (err) {
+      console.warn('Error ending session:', err);
+    }
   };
 
   const handleStartCall = async () => {
@@ -72,7 +76,17 @@ export function ViewController({ appConfig }: ViewControllerProps) {
       return;
     }
     setIsConnectingManual(true);
-    start();
+    try {
+      // Ensure previous room is fully torn down before minting a new one.
+      if (isConnected) {
+        await end();
+      }
+      await start();
+    } catch (err) {
+      console.error('Failed to start session:', err);
+      setIsConnectingManual(false);
+      setIsCallEnded(true);
+    }
   };
 
   const isConnecting = isConnectingManual || agentState === 'connecting' || agentState === 'initializing';
@@ -155,6 +169,7 @@ export function ViewController({ appConfig }: ViewControllerProps) {
             audioVisualizerRadialBarCount={appConfig.audioVisualizerRadialBarCount}
             audioVisualizerRadialRadius={appConfig.audioVisualizerRadialRadius}
             audioVisualizerWaveLineWidth={appConfig.audioVisualizerWaveLineWidth}
+            onDisconnect={handleDisconnect}
             className="fixed inset-0"
           />
         )}

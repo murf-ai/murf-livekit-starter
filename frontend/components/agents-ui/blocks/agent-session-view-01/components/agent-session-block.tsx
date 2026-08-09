@@ -154,6 +154,8 @@ export interface AgentSessionView_01Props {
   audioVisualizerWaveLineWidth?: number;
   /** Optional class name merged onto the outer `<section>` container. */
   className?: string;
+  /** Called when the user ends the call from the control bar. */
+  onDisconnect?: () => void;
 }
 
 export function AgentSessionView_01({
@@ -172,6 +174,7 @@ export function AgentSessionView_01({
   audioVisualizerRadialBarCount,
   audioVisualizerRadialRadius,
   audioVisualizerWaveLineWidth,
+  onDisconnect,
   ref,
   className,
   ...props
@@ -245,8 +248,8 @@ export function AgentSessionView_01({
         audioVisualizerWaveLineWidth={audioVisualizerWaveLineWidth}
       />
 
-      {/* transcript — below the compact avatar when chat is open */}
-      <div className="absolute top-0 bottom-[135px] z-30 flex w-full flex-col md:bottom-[170px]">
+      {/* transcript — strictly below the compact avatar header (top-44 / top-48) */}
+      <div className="absolute top-[170px] bottom-[135px] z-30 flex w-full flex-col md:top-[190px] md:bottom-[170px]">
         <AnimatePresence>
           {chatOpen && (
             <motion.div
@@ -256,7 +259,7 @@ export function AgentSessionView_01({
               <AgentChatTranscript
                 agentState={agentState}
                 messages={messages}
-                className="mx-auto w-full max-w-2xl [&_.is-user>div]:rounded-[22px] [&>div>div]:px-4 [&>div>div]:pt-[11.5rem] md:[&>div>div]:px-6 md:[&>div>div]:pt-48"
+                className="mx-auto w-full max-w-2xl [&_.is-user>div]:rounded-[22px] [&>div>div]:px-4 [&>div>div]:pt-2 md:[&>div>div]:px-6 md:[&>div>div]:pt-2"
               />
             </motion.div>
           )}
@@ -273,7 +276,7 @@ export function AgentSessionView_01({
               transition={{ duration: 0.2 }}
               className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex justify-center md:inset-x-12"
             >
-              <p className="max-w-2xl rounded-2xl border border-white/10 bg-slate-950/85 px-4 py-3 text-center text-sm leading-relaxed text-white shadow-lg backdrop-blur-md md:text-base">
+              <p className="max-w-2xl rounded-2xl border border-emerald-500/30 bg-slate-950/90 px-5 py-3.5 text-center text-sm font-medium leading-relaxed text-slate-100 shadow-2xl backdrop-blur-xl md:text-base">
                 {latestAgentSubtitle}
               </p>
             </motion.div>
@@ -308,7 +311,7 @@ export function AgentSessionView_01({
             controls={controls}
             isChatOpen={chatOpen}
             isConnected={session.isConnected}
-            onDisconnect={session.end}
+            onDisconnect={onDisconnect ?? session.end}
             onIsChatOpenChange={setChatOpen}
           />
         </div>

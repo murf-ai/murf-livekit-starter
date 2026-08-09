@@ -28,16 +28,37 @@ interface AppProps {
 }
 
 export function App({ appConfig }: AppProps) {
+  // Always mint a FRESH room token on every start().
+  // TokenSource.endpoint caches the JWT until expiry, so "Start again" after END CALL
+  // would rejoin the old empty room and the agent never re-dispatches.
   const tokenSource = useMemo(() => {
-    return typeof process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT === 'string'
-      ? getSandboxTokenSource(appConfig)
-      : TokenSource.endpoint('/api/token');
+    if (typeof process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT === 'string') {
+      return getSandboxTokenSource(appConfig);
+    }
+
+    return TokenSource.literal(async () => {
+      const roomConfig = appConfig.agentName
+        ? { agents: [{ agent_name: appConfig.agentName }] }
+        : undefined;
+
+      const res = await fetch('/api/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(roomConfig ? { room_config: roomConfig } : {}),
+      });
+
+      if (!res.ok) {
+        throw new Error((await res.text()) || 'Failed to fetch connection details');
+      }
+
+      return res.json();
+    });
   }, [appConfig]);
 
-  const session = useSession(
-    tokenSource,
-    appConfig.agentName ? { agentName: appConfig.agentName } : undefined
-  );
+  const session = useSession(tokenSource, {
+    // Local agent process spin-up can take a few seconds after a previous job exits.
+    agentConnectTimeoutMilliseconds: 45_000,
+  });
 
   return (
     <AgentSessionProvider session={session} volume={1}>
