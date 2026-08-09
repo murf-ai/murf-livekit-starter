@@ -1,5 +1,4 @@
 import logging
-
 from dotenv import load_dotenv
 from livekit import rtc
 from livekit.agents import (
@@ -12,131 +11,148 @@ from livekit.agents import (
     inference,
     tokenize,
     room_io,
+    function_tool,
+    RunContext
 )
 from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-logger = logging.getLogger("agent")
+import sqlite3
+from datetime import datetime
 
+logger = logging.getLogger("agent")
 load_dotenv(".env.local")
 
-# Change this prompt to change what your voice agent does.
-# See README.md for example prompts (customer support, language tutor, receptionist).
+# 1. Initialize SQLite Database
+def init_db():
+    conn = sqlite3.connect("raksha_triage.db")
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id TEXT PRIMARY KEY,
+            name TEXT,
+            location TEXT,
+            household_size INTEGER,
+            mobility_needs TEXT,
+            last_interaction TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+init_db()
+
 SYSTEM_PROMPT = """
-IDENTITY
-You are "Raksha", a rapid-response emergency voice agent for the Disaster Management helpline in India. You work to keep citizens calm and safe during crises.
+You are Raksha, a real-time disaster response triage assistant in India. 
+Communicate calmly and urgently. 
 
-IMPORTANT- before users initiates the conversation ,you initiate the conversation by saying: "I am Raksha, Emergency Disaster Helpline. Are you in immediate danger?"
-OBJECTIVES
-1. Assess the immediate threat (e.g., floodwater rising, earthquake aftershocks).
-2. Provide immediate, universally accepted survival instructions.
-3. Triage the caller's situation and gather their exact location.
+You MUST speak in "Hinglish" — a natural, conversational mix of English and Hindi. 
+Do not use pure, highly formal Hindi. Use common English words for context.
 
+MEMORY & CONSENT RULES:
+1. When a user connects, always call `lookup_caller` first using a default ID like 'user_123'. 
+2. If they are returning, greet them by name and confirm their safety status.
+3. If they are new, ask for their name, location, household size, and mobility needs.
+4. STRICT RULE: You MUST ask for their permission before saving their data. If they say yes, call `save_caller_info`. If no, do not save.
+5. FORGET ME RULE: If a user asks you to delete, forget, or erase their data, you MUST call `delete_caller_info` to wipe their record.
 
-KNOWLEDGE
-You know general disaster survival tactics (e.g., moving to high ground during floods, dropping and covering during earthquakes). You DO NOT have real-time live data on local evacuation orders, current water levels, or weather forecasts. 
+LANGUAGE & SCRIPT RULES:
+Always write every language in its own native script.
+- For Hindi words → Use Devanagari (नमस्ते), NEVER romanize Hindi words (never "namaste").
+- For English words → Use the standard English alphabet (e.g., "Emergency", "Location").
 
-LANGUAGE
-You must seamlessly support code-mixed language. If the user speaks in a mix of Hindi and English (Hinglish), you must mirror their mix and reply in a natural, spoken Hinglish register. Keep your tone formal, calm, and reassuring.
-
-GUARDRAILS
-- You must NEVER issue an "all-clear" or an official evacuation instruction on your own authority.
-- You must NEVER give medical diagnoses or medication advice.
-- ESCALATION SCRIPT: If the user is severely injured, trapped, or asks for official evacuation status, you must say exactly: "I cannot authorize that. For immediate rescue or medical emergencies, please disconnect and dial 112 immediately."
-
-STYLE
-- Tune for speech, not text. Use short sentences (under 15 words).
-- NEVER use markdown, bullet points, asterisks, or brackets in your response. 
-- Speak with a steady, slightly urgent but calm pace.
+Example of the perfect Hinglish response:
+"नमस्ते! Emergency situation में आपकी location क्या है? क्या आप safe हैं?"
 """
 
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(instructions=SYSTEM_PROMPT)
 
-    # To add tools, use the @function_tool decorator.
-    # Here's an example that adds a simple weather tool.
-    # You also have to add `from livekit.agents import function_tool, RunContext` to the top of this file
-    # @function_tool
-    # async def lookup_weather(self, context: RunContext, location: str):
-    #     """Use this tool to look up current weather information in the given location.
-    #
-    #     If the location is not supported by the weather service, the tool will indicate this. You must tell the user the location's weather is unavailable.
-    #
-    #     Args:
-    #         location: The location to look up weather information for (e.g. city name)
-    #     """
-    #
-    #     logger.info(f"Looking up weather for {location}")
-    #
-    #     return "sunny with a temperature of 70 degrees."
+    @function_tool
+    async def lookup_caller(self, context: RunContext, user_id: str):
+        """Look up a returning caller by their phone number or user_id."""
+        conn = sqlite3.connect("raksha_triage.db")
+        c = conn.cursor()
+        c.execute("SELECT name, location, household_size, mobility_needs FROM users WHERE user_id = ?", (user_id,))
+        result = c.fetchone()
+        conn.close()
+        
+        if result:
+            return f"Found caller: Name={result[0]}, Location={result[1]}, Household Size={result[2]}, Mobility Needs={result[3]}. Welcome them back!"
+        return "Caller not found. This is a new user. You must ask for their details."
+
+    @function_tool
+    async def save_caller_info(
+        self, 
+        context: RunContext,
+        user_id: str,
+        name: str,
+        location: str,
+        household_size: int,
+        mobility_needs: str
+    ):
+        """Save caller triage info. YOU MUST EXPLICITLY ASK FOR CONSENT BEFORE CALLING THIS."""
+        conn = sqlite3.connect("raksha_triage.db")
+        c = conn.cursor()
+        last_interaction = datetime.now().isoformat()
+        
+        c.execute('''
+            INSERT INTO users (user_id, name, location, household_size, mobility_needs, last_interaction)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                name=excluded.name,
+                location=excluded.location,
+                household_size=excluded.household_size,
+                mobility_needs=excluded.mobility_needs,
+                last_interaction=excluded.last_interaction
+        ''', (user_id, name, location, household_size, mobility_needs, last_interaction))
+        conn.commit()
+        conn.close()
+        return "User data successfully saved to the emergency database."
+
+    @function_tool
+    async def delete_caller_info(self, context: RunContext, user_id: str):
+        """Delete the caller's saved information from the database when they ask to be forgotten."""
+        conn = sqlite3.connect("raksha_triage.db")
+        c = conn.cursor()
+        c.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+        conn.commit()
+        rows_deleted = c.rowcount
+        conn.close()
+        
+        if rows_deleted > 0:
+            return "User data successfully deleted from the emergency database."
+        return "No data found for this user."
 
 
 server = AgentServer()
 
-
 def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
 
-
 server.setup_fnc = prewarm
-
 
 @server.rtc_session(agent_name="my-agent")
 async def my_agent(ctx: JobContext):
-    # Logging setup
-    # Add any other context you want in all log entries here
     ctx.log_context_fields = {
         "room": ctx.room.name,
     }
 
-    # Set up a voice AI pipeline using Murf Falcon, Gemini, Deepgram, and the LiveKit turn detector
     session = AgentSession(
-        # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
-        # See all available models at https://docs.livekit.io/agents/models/stt/
-        stt=deepgram.STT(model="nova-3"),
-        # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
-        # See all available models at https://docs.livekit.io/agents/models/llm/
-        llm=google.LLM(
-                model="gemini-3.5-flash-lite",
-            ),
-        # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
-        # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
+        stt=deepgram.STT(model="nova-3", language="multi"),
+        llm=google.LLM(model="gemini-3.5-flash-lite"),
         tts=murf.TTS(
-                voice="Anisha", 
-                locale="hi-IN",
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
-        # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
-        # See more at https://docs.livekit.io/agents/build/turns
+            voice="Anisha",
+            style="Conversation",
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+            text_pacing=True,
+        ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        # allow the LLM to generate a response while waiting for the end of turn
-        # See more at https://docs.livekit.io/agents/build/audio/#preemptive-generation
         preemptive_generation=True,
     )
 
-    # To use a realtime model instead of a voice pipeline, use the following session setup instead.
-    # (Note: This is for the OpenAI Realtime API. For other providers, see https://docs.livekit.io/agents/models/realtime/))
-    # 1. Install livekit-agents[openai]
-    # 2. Set OPENAI_API_KEY in .env.local
-    # 3. Add `from livekit.plugins import openai` to the top of this file
-    # 4. Use the following session setup instead of the version above
-    # session = AgentSession(
-    #     llm=openai.realtime.RealtimeModel(voice="marin")
-    # )
-
-    # # Add a virtual avatar to the session, if desired
-    # # For other providers, see https://docs.livekit.io/agents/models/avatar/
-    # avatar = hedra.AvatarSession(
-    #   avatar_id="...",  # See https://docs.livekit.io/agents/models/avatar/plugins/hedra
-    # )
-    # # Start the avatar and wait for it to join
-    # await avatar.start(session, room=ctx.room)
-
-    # Start the session, which initializes the voice pipeline and warms up the models
     await session.start(
         agent=Assistant(),
         room=ctx.room,
@@ -152,9 +168,7 @@ async def my_agent(ctx: JobContext):
         ),
     )
 
-    # Join the room and connect to the user
     await ctx.connect()
-
 
 if __name__ == "__main__":
     cli.run_app(server)
