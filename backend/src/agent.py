@@ -27,12 +27,9 @@ logger = logging.getLogger("agent")
 
 load_dotenv(".env.local")
 
-# Spoken once when the session starts — not on every user turn.
-FIRST_GREETING = (
-    "नमस्ते! मैं जन सहाय हूँ। मुझे अपनी फाइनेंशियल दोस्त समझिए। "
-    "मैं सरकारी वित्तीय योजनाओं और सुरक्षित डिजिटल बैंकिंग के बारे में आपकी मदद कर सकता हूँ। "
-    "बताइए, आज मैं आपकी कैसे मदद करूँ?"
-)
+# Intro speech disabled — users found the long greeting slow and interruptive.
+# Keep empty so session starts listening immediately.
+FIRST_GREETING = ""
 
 # Strong romanized Hindi / Hinglish markers (avoid English-only words).
 HINDI_KEYWORDS = {
@@ -103,21 +100,105 @@ REPLY_LANG_HI = (
 )
 
 REPLY_LANG_EN = (
-    "\n\nLANGUAGE NOW: User spoke English. Reply in English only. "
-    "No Hindi or Devanagari, even if your greeting was Hindi.\n"
+    "\n\nLANGUAGE NOW: User spoke English. Reply in English ONLY. "
+    "Use zero Hindi words and zero Devanagari script. "
+    "Do not greet in Hindi. Match English this turn even if history was Hindi.\n"
     "SAFETY: Never ask for OTP, PIN, or account number. "
     "Never promise scheme approval.\n"
 )
 
 VOICE_HI = "hi-IN-anisha"
 VOICE_EN = "en-IN-anisha"
+LOCALE_HI = "hi-IN"
+LOCALE_EN = "en-IN"
+
+# Common English function words — used to beat noisy multilingual STT.
+_ENGLISH_MARKERS = {
+    "the",
+    "a",
+    "an",
+    "is",
+    "are",
+    "am",
+    "was",
+    "were",
+    "be",
+    "been",
+    "what",
+    "which",
+    "who",
+    "how",
+    "when",
+    "where",
+    "why",
+    "tell",
+    "about",
+    "please",
+    "can",
+    "could",
+    "would",
+    "should",
+    "you",
+    "your",
+    "me",
+    "my",
+    "i",
+    "we",
+    "our",
+    "want",
+    "need",
+    "help",
+    "hello",
+    "hi",
+    "thanks",
+    "thank",
+    "scheme",
+    "schemes",
+    "government",
+    "bank",
+    "account",
+    "insurance",
+    "pension",
+    "eligibility",
+    "apply",
+    "application",
+    "some",
+    "any",
+    "this",
+    "that",
+    "with",
+    "from",
+    "for",
+    "and",
+    "or",
+    "to",
+    "of",
+    "in",
+    "on",
+    "do",
+    "does",
+    "did",
+    "have",
+    "has",
+    "had",
+    "know",
+    "explain",
+    "describe",
+    "list",
+    "give",
+    "show",
+}
 
 # Marker used only inside chat context; stripped if re-seen so locks never stack.
 _LANG_LOCK_PREFIX = "[[LANG_LOCK]]"
+_MEMORY_PREFIX = "[[CALLER_MEMORY]]"
 
 
 def detect_reply_language(transcript: str, stt_language: str | None = None) -> str:
-    """Return 'hi' or 'en' from user transcript + optional STT language tag."""
+    """Return 'hi' or 'en' from user transcript + optional STT language tag.
+
+    Ignores non-Latin STT garbage (CJK etc.) so English speech is not forced to Hindi.
+    """
     text = (transcript or "").strip()
     if not text:
         return "hi"
@@ -126,21 +207,37 @@ def detect_reply_language(transcript: str, stt_language: str | None = None) -> s
     if DEVANAGARI_RE.search(text):
         return "hi"
 
-    words = set(re.findall(r"[a-zA-Z']+", text.lower()))
-    has_hindi_kw = not words.isdisjoint(HINDI_KEYWORDS)
-
-    # Romanized Hindi / Hinglish keywords -> Hindi
-    if has_hindi_kw:
+    # Only Latin tokens count — drop Japanese/Korean STT hallucinations.
+    latin_words = re.findall(r"[a-zA-Z']+", text.lower())
+    if not latin_words:
+        lang = (stt_language or "").lower().replace("_", "-")
+        if lang.startswith("en"):
+            return "en"
         return "hi"
 
-    # Plain ASCII text with no Hindi keywords -> English
-    if text.isascii():
+    hindi_hits = sum(1 for w in latin_words if w in HINDI_KEYWORDS)
+    en_hits = sum(1 for w in latin_words if w in _ENGLISH_MARKERS)
+
+    # Clear English intent
+    if en_hits >= 2 and hindi_hits <= 1:
+        return "en"
+    # Clear romanized Hindi / Hinglish
+    if hindi_hits >= 2 and hindi_hits >= en_hits:
+        return "hi"
+    if hindi_hits >= 1 and en_hits == 0:
+        return "hi"
+    # Mostly Latin, no Hindi keywords -> English
+    if hindi_hits == 0 and len(latin_words) >= 2:
         return "en"
 
     lang = (stt_language or "").lower().replace("_", "-")
     if lang.startswith("en"):
         return "en"
-
+    if lang.startswith("hi"):
+        return "hi"
+    # Prefer English when mixed Latin text is ambiguous (better UX for English users).
+    if en_hits >= 1:
+        return "en"
     return "hi"
 
 
@@ -254,7 +351,7 @@ def _format_memory_note(caller: dict) -> str:
     facts_txt = "; ".join(facts_bits) if facts_bits else "no saved scheme facts yet"
     lang = caller.get("language_preference") or "unknown"
     return (
-        f"{_LANG_LOCK_PREFIX} RETURNING CALLER MEMORY: name={name}; "
+        f"{_MEMORY_PREFIX} RETURNING CALLER MEMORY: name={name}; "
         f"language_preference={lang}; facts=[{facts_txt}]. "
         f"Greet them by name, mention you remember them, and reference useful facts briefly."
     )
@@ -377,12 +474,14 @@ class Assistant(Agent):
             logger.info("Updated instructions for language=%s", reply_lang)
 
             voice = VOICE_HI if reply_lang == "hi" else VOICE_EN
+            locale = LOCALE_HI if reply_lang == "hi" else LOCALE_EN
             if voice != self._voice:
                 tts = self.session.tts if self.session else None
                 if tts is not None and hasattr(tts, "update_options"):
-                    tts.update_options(voice=voice)
+                    # style=None = default Murf style (Conversation style caused beeps)
+                    tts.update_options(voice=voice, locale=locale, style=None)
                     self._voice = voice
-                    logger.info("Switched TTS voice to %s", voice)
+                    logger.info("Switched TTS voice=%s locale=%s", voice, locale)
 
         return reply_lang
 
@@ -434,13 +533,14 @@ class Assistant(Agent):
         _strip_lang_locks(turn_ctx)
         if reply_lang == "en":
             lock = (
-                f"{_LANG_LOCK_PREFIX} Reply in English only for this turn. "
+                f"{_LANG_LOCK_PREFIX} CRITICAL: Reply in English ONLY this turn. "
+                "No Hindi words. No Devanagari. No Hinglish. "
                 "Never ask for OTP, PIN, or account number. "
                 "Never promise scheme approval."
             )
         else:
             lock = (
-                f"{_LANG_LOCK_PREFIX} Reply in Hindi only for this turn. "
+                f"{_LANG_LOCK_PREFIX} CRITICAL: Reply in Hindi only this turn. "
                 "OTP, PIN, ya account number kabhi mat mango. "
                 "Scheme approval kabhi guarantee mat karo."
             )
@@ -498,20 +598,24 @@ async def my_agent(ctx: JobContext):
         llm=llm_stack,
         tts=murf.TTS(
             voice=VOICE_HI,
-            style="Conversation",
-            text_pacing=True,
+            locale=LOCALE_HI,
+            style=None,  # default style — Conversation caused audio beeps/glitches
+            text_pacing=False,  # pacing can introduce choppy/beepy audio
+            min_buffer_size=50,  # smoother stream chunks
+            max_buffer_delay_in_ms=200,
+            sample_rate=24000,
         ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
         preemptive_generation=False,
         allow_interruptions=True,
-        min_interruption_duration=1.0,
-        min_interruption_words=3,
-        min_endpointing_delay=0.8,
-        max_endpointing_delay=3.0,
-        false_interruption_timeout=2.0,
+        min_interruption_duration=0.6,
+        min_interruption_words=2,
+        min_endpointing_delay=0.5,
+        max_endpointing_delay=2.5,
+        false_interruption_timeout=1.5,
         resume_false_interruption=True,
-        aec_warmup_duration=5.0,
+        aec_warmup_duration=3.0,
         discard_audio_if_uninterruptible=True,
     )
 
@@ -560,12 +664,14 @@ async def my_agent(ctx: JobContext):
 
     ctx.add_shutdown_callback(cleanup)
 
-    # Greeting after session is fully connected.
-    # allow_interruptions=True so text/voice input during greeting is not dropped.
-    try:
-        await session.say(FIRST_GREETING, allow_interruptions=True)
-    except Exception as err:
-        logger.error("Error playing initial greeting: %s", err)
+    # No spoken intro — jump straight to listening so the call feels instant.
+    if FIRST_GREETING.strip():
+        try:
+            await session.say(FIRST_GREETING, allow_interruptions=True)
+        except Exception as err:
+            logger.error("Error playing initial greeting: %s", err)
+    else:
+        logger.info("Skipping intro speech; agent is listening immediately")
 
 
 if __name__ == "__main__":

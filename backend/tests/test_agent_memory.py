@@ -66,3 +66,13 @@ def test_language_detection():
     assert agent.detect_reply_language("My name is Ramesh", "hi-IN") == "en"
     assert agent.detect_reply_language("Namaste, mera naam Ramesh hai", "en-IN") == "hi"
     assert agent.detect_reply_language("नमस्ते जन सहाय", "en-IN") == "hi"
+    # English with noisy multilingual STT garbage must still be English
+    assert (
+        agent.detect_reply_language(
+            "tell me about some government schemes moneda ムーレン",
+            "hi",
+        )
+        == "en"
+    )
+    assert agent.detect_reply_language("What is PMJDY eligibility?", None) == "en"
+    assert agent.detect_reply_language("PMJDY kya hai batao", None) == "hi"
