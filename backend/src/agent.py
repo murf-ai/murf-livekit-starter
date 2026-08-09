@@ -1,3 +1,16 @@
+"""
+BharatPay Pooja Voice Agent — Day 4
+Adds persistent SQLite memory so Pooja remembers returning callers.
+
+New capabilities
+----------------
+* lookup_caller()       — called at session start to see if we know this person
+* save_caller_info()    — called after the user gives consent to be remembered
+* Consent gate          — HARD RULE: always ask before saving anything
+* Personalised greeting — returning callers are welcomed back by name
+"""
+
+import json
 import logging
 import os
 
@@ -9,22 +22,44 @@ from livekit.agents import (
     AgentSession,
     JobContext,
     JobProcess,
+    RunContext,
     cli,
+    function_tool,
     tokenize,
     room_io,
 )
 from livekit.plugins import deepgram, google, murf, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
+from database import init_db, lookup_caller, save_caller
+
 logger = logging.getLogger("agent")
 
 load_dotenv(".env.local")
+
+# Initialise DB once at import time (idempotent)
+init_db()
+
+# ---------------------------------------------------------------------------
+# System Prompt
+# ---------------------------------------------------------------------------
 
 SYSTEM_PROMPT = """
 # IDENTITY
 You are Pooja — a friendly, calm, and professional customer support agent for BharatPay, India's trusted digital payments and lending platform. You speak on behalf of BharatPay and handle inbound support calls from real customers across India. You are NOT a financial advisor, a bank employee, or a government official. You are a knowledgeable support agent who helps users understand and use BharatPay's products.
 
 Your personality: warm, patient, never condescending. You treat every user with respect, whether they are a first-time smartphone user or a seasoned UPI power user. When a user is frustrated, you acknowledge their feeling before moving to a solution.
+
+# MEMORY & IDENTITY TOOLS  ← NEW for Day 4
+You have two tools available:
+
+1. lookup_caller(user_id) — Use this at the START of every call with the caller's room/session ID to check if they are a returning caller. If they are, use the stored name and context to greet them personally.
+
+2. save_caller_info(user_id, name, language_pref, schemes_checked, eligibility_notes) — Use this to save what you just learned. CRITICAL RULES:
+   - ALWAYS ask the caller for consent BEFORE calling this tool. Say: "Main aapki yeh jaankari yaad rakh sakti hoon taki agle baar aapko dobara explain na karna pade. Kya aap chahte hain ki main yeh save kar loon?"
+   - If they say NO, do NOT call save_caller_info. Respect their choice without questioning.
+   - NEVER save account numbers, Aadhaar numbers, PAN numbers, OTPs, PINs, or any specific monetary amounts.
+   - Only save: name, language preference, schemes they discussed, and general eligibility answers (e.g., "has_existing_loan: yes").
 
 # OBJECTIVES
 A call is successful when it achieves ONE OR MORE of the following:
@@ -97,7 +132,7 @@ For RED FLAG situations — user mentions financial loss, fraud, or unauthorized
 Say immediately: "Ye bahut important hai. Please call our fraud helpline at 1800-123-4567 right now — they are available 24 hours and can freeze your account immediately to protect your money."
 
 # STYLE
-- Greet warmly in your very first message; state your name, company, and what you can help with.
+- On the VERY FIRST message, call the lookup_caller tool FIRST. If returning caller found, greet by name and reference last topic. If new caller, use the standard greeting.
 - Keep every sentence under 20 words.
 - Pause naturally between ideas — do not rush through information.
 - If the user is silent, wait a moment before prompting: "Kya aap still there hain?"
@@ -109,10 +144,11 @@ Say immediately: "Ye bahut important hai. Please call our fraud helpline at 1800
 - End the call warmly: "Koi aur sawaal ho toh please call karein. BharatPay mein aapka swagat hai."
 """
 
+# ---------------------------------------------------------------------------
+# Standard first-time greeting (returning caller greeting is built dynamically)
+# ---------------------------------------------------------------------------
 
-# First-turn greeting (used in session.say)
-# Warm, persona-driven, sets scope, and reassures the user about security — all in one breath.
-GREETING = (
+GREETING_NEW = (
     "Namaste! Main hoon Pooja, BharatPay support se. "
     "Main aapki help kar sakti hoon — UPI payments, wallet, account, ya loan ke baare mein. "
     "Aur don't worry — main kabhi bhi aapka OTP ya PIN nahi mangti. "
@@ -120,27 +156,107 @@ GREETING = (
 )
 
 
+def _build_returning_greeting(record: dict) -> str:
+    name = record.get("name") or "aap"
+    schemes = record.get("schemes_checked") or []
+    eligibility = record.get("eligibility_notes") or {}
+
+    # Build a natural reference to the last conversation
+    context_hint = ""
+    if schemes:
+        last_scheme = schemes[-1]
+        context_hint = f"Pichhli baar aapne {last_scheme} ke baare mein poochhha tha. "
+    elif eligibility:
+        first_key = next(iter(eligibility))
+        context_hint = f"Pichhli baar hum {first_key} ke baare mein baat kar rahe the. "
+
+    return (
+        f"Namaste {name}! Main hoon Pooja, BharatPay support se. "
+        f"Aapko phir sun ke achha laga. "
+        f"{context_hint}"
+        f"Aaj main aapki kya help kar sakti hoon?"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Agent class with memory tools
+# ---------------------------------------------------------------------------
+
 class Assistant(Agent):
-    def __init__(self) -> None:
+    def __init__(self, user_id: str, caller_record: dict | None) -> None:
         super().__init__(instructions=SYSTEM_PROMPT)
+        self._user_id = user_id
+        self._caller_record = caller_record  # pre-fetched before session start
 
-    # To add tools, use the @function_tool decorator.
-    # Here's an example that adds a simple weather tool.
-    # You also have to add `from livekit.agents import function_tool, RunContext` to the top of this file
-    # @function_tool
-    # async def lookup_weather(self, context: RunContext, location: str):
-    #     """Use this tool to look up current weather information in the given location.
-    #
-    #     If the location is not supported by the weather service, the tool will indicate this. You must tell the user the location's weather is unavailable.
-    #
-    #     Args:
-    #         location: The location to look up weather information for (e.g. city name)
-    #     """
-    #
-    #     logger.info(f"Looking up weather for {location}")
-    #
-    #     return "sunny with a temperature of 70 degrees."
+    # ------------------------------------------------------------------
+    # Tool 1 — Look up a caller
+    # ------------------------------------------------------------------
+    @function_tool
+    async def lookup_caller_tool(
+        self,
+        context: RunContext,
+        user_id: str,
+    ) -> str:
+        """Look up whether we have a stored record for this caller.
 
+        Call this at the very start of every session using the caller's session/room ID.
+        Returns a JSON string with the caller's profile, or a message saying they are new.
+
+        Args:
+            user_id: The unique identifier for this caller (room name or participant SID).
+        """
+        logger.info("Tool: lookup_caller called for user_id=%s", user_id)
+        record = lookup_caller(user_id)
+        if record is None:
+            return json.dumps({"status": "new_caller", "user_id": user_id})
+        return json.dumps({"status": "returning_caller", "record": record})
+
+    # ------------------------------------------------------------------
+    # Tool 2 — Save caller info (consent required)
+    # ------------------------------------------------------------------
+    @function_tool
+    async def save_caller_info(
+        self,
+        context: RunContext,
+        user_id: str,
+        name: str | None = None,
+        language_pref: str | None = None,
+        schemes_checked: list[str] | None = None,
+        eligibility_notes: dict | None = None,
+    ) -> str:
+        """Save information about the caller AFTER they have given explicit consent.
+
+        IMPORTANT: You MUST ask the caller for consent before calling this tool.
+        NEVER save: account numbers, Aadhaar, PAN, OTPs, PINs, or monetary amounts.
+        SAFE to save: name, language preference, scheme names discussed, general eligibility flags.
+
+        Args:
+            user_id: Unique caller identifier (room name or participant SID).
+            name: The caller's preferred first name.
+            language_pref: Language they prefer — "hi", "en", or "hi-en" for Hinglish.
+            schemes_checked: List of BharatPay scheme or product names discussed (e.g. ["Personal Loan", "BharatPay Lite"]).
+            eligibility_notes: Key-value pairs of eligibility facts (e.g. {"has_existing_loan": "yes", "employment_type": "self-employed"}).
+        """
+        logger.info(
+            "Tool: save_caller_info called for user_id=%s  name=%s  schemes=%s",
+            user_id,
+            name,
+            schemes_checked,
+        )
+        record = save_caller(
+            user_id=user_id,
+            name=name,
+            language_pref=language_pref,
+            schemes_checked=schemes_checked,
+            eligibility_notes=eligibility_notes,
+            consent_given=True,
+        )
+        return json.dumps({"status": "saved", "record": record})
+
+
+# ---------------------------------------------------------------------------
+# LiveKit server wiring
+# ---------------------------------------------------------------------------
 
 server = AgentServer()
 
@@ -154,25 +270,26 @@ server.setup_fnc = prewarm
 
 @server.rtc_session(agent_name="pooja-voice")
 async def my_agent(ctx: JobContext):
-    # Logging setup
-    # Add any other context you want in all log entries here
-    ctx.log_context_fields = {
-        "room": ctx.room.name,
-    }
+    ctx.log_context_fields = {"room": ctx.room.name}
 
-    # Set up a voice AI pipeline using Murf Falcon, Gemini, Deepgram, and the LiveKit turn detector
+    # ------------------------------------------------------------------
+    # Memory look-up BEFORE session starts
+    # Use the room name as a stable caller ID.
+    # In production you'd use a verified phone number / user JWT claim.
+    # ------------------------------------------------------------------
+    user_id = ctx.room.name
+    caller_record = lookup_caller(user_id)
+
+    if caller_record and caller_record.get("consent_given"):
+        greeting = _build_returning_greeting(caller_record)
+        logger.info("Returning caller detected: %s", caller_record.get("name"))
+    else:
+        greeting = GREETING_NEW
+        logger.info("New caller session: user_id=%s", user_id)
+
     session = AgentSession(
-        # Speech-to-text (STT) is your agent's ears, turning the user's speech into text the LLM can understand
-        # See all available models at https://docs.livekit.io/agents/models/stt/
         stt=deepgram.STT(model="nova-3", language="multi"),
-        # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
-        # Google Gemini provides a generous free tier suitable for development and demos
-        # See all available models at https://docs.livekit.io/agents/models/llm/
-        llm=google.LLM(
-            model="gemini-1.5-flash",
-        ),
-        # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech the user can hear
-        # See all available models and voices at https://docs.livekit.io/agents/models/tts/
+        llm=google.LLM(model="gemini-1.5-flash"),
         tts=murf.TTS(
             voice="Pooja",
             locale="en-IN",
@@ -180,36 +297,13 @@ async def my_agent(ctx: JobContext):
             tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
             text_pacing=True,
         ),
-        # VAD and turn detection determine when the user is speaking and when the agent should respond
-        # See more at https://docs.livekit.io/agents/build/turns
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        # Allow the LLM to generate a response while waiting for end of turn
-        # See more at https://docs.livekit.io/agents/build/audio/#preemptive-generation
         preemptive_generation=True,
     )
 
-    # To use a realtime model instead of a voice pipeline, use the following session setup instead.
-    # (Note: This is for the OpenAI Realtime API. For other providers, see https://docs.livekit.io/agents/models/realtime/))
-    # 1. Install livekit-agents[openai]
-    # 2. Set OPENAI_API_KEY in .env.local
-    # 3. Add `from livekit.plugins import openai` to the top of this file
-    # 4. Use the following session setup instead of the version above
-    # session = AgentSession(
-    #     llm=openai.realtime.RealtimeModel(voice="marin")
-    # )
-
-    # # Add a virtual avatar to the session, if desired
-    # # For other providers, see https://docs.livekit.io/agents/models/avatar/
-    # avatar = hedra.AvatarSession(
-    #   avatar_id="...",  # See https://docs.livekit.io/agents/models/avatar/plugins/hedra
-    # )
-    # # Start the avatar and wait for it to join
-    # await avatar.start(session, room=ctx.room)
-
-    # Start the session, which initializes the voice pipeline and warms up the models
     await session.start(
-        agent=Assistant(),
+        agent=Assistant(user_id=user_id, caller_record=caller_record),
         room=ctx.room,
         room_options=room_io.RoomOptions(
             audio_input=room_io.AudioInputOptions(
@@ -223,11 +317,10 @@ async def my_agent(ctx: JobContext):
         ),
     )
 
-    # Join the room and connect to the user
     await ctx.connect()
 
-    # Greet the user as soon as they join
-    await session.say(GREETING)
+    # Speak the appropriate greeting
+    await session.say(greeting)
 
 
 if __name__ == "__main__":

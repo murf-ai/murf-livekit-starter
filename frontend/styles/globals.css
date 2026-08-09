@@ -40,37 +40,43 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.269 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.371 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --background: #050505;
+  --foreground: #f5f5f5;
+  --card: #0b0b0b;
+  --card-foreground: #f5f5f5;
+  --popover: #0b0b0b;
+  --popover-foreground: #f5f5f5;
+  --primary: #8b5cf6;
+  --primary-foreground: #ffffff;
+  --secondary: #120a2e;
+  --secondary-foreground: #c4a7ff;
+  --muted: #0b0b0b;
+  --muted-foreground: #9a9a9a;
+  --accent: #120a2e;
+  --accent-foreground: #c4a7ff;
+  --destructive: #ef4444;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.08);
+  --ring: #8b5cf6;
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.439 0 0);
+  --sidebar: #0b0b0b;
+  --sidebar-foreground: #f5f5f5;
+  --sidebar-primary: #8b5cf6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #120a2e;
+  --sidebar-accent-foreground: #c4a7ff;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #8b5cf6;
+
+  /* Custom variables for AI Orb states */
+  --orb-speed: 12s;
+  --orb-speed-rev: 14s;
+  --orb-glow-color: rgba(139, 92, 246, 0.15);
+  --orb-glow-radius: 15px;
 }
 
 @theme inline {
@@ -794,5 +800,124 @@
   font-size: 11px;
   color: rgba(255,255,255,0.4);
   margin: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Voice Bar Visualizer & Falling Rupee Ambient Animations            */
+/* ------------------------------------------------------------------ */
+
+@keyframes vbv-bar {
+  0%,
+  100% {
+    transform: scaleY(var(--vbv-lo, 0.15));
+  }
+  32% {
+    transform: scaleY(var(--vbv-mid, 0.4));
+  }
+  68% {
+    transform: scaleY(var(--vbv-hi, 0.75));
+  }
+}
+
+.vbv-bars {
+  gap: 4px;
+}
+
+@media (min-width: 640px) {
+  .vbv-bars {
+    gap: 5px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .vbv-bars {
+    gap: 6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vbv-bar {
+    animation: none !important;
+    transform: scaleY(var(--vbv-mid, 0.4)) !important;
+  }
+}
+
+@keyframes rupee-fall {
+  0% {
+    transform: translate3d(0, -15vh, 0) rotate(-5deg);
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.35;
+  }
+  25% {
+    transform: translate3d(12px, 20vh, 0) rotate(2deg);
+    opacity: 0.45;
+  }
+  50% {
+    transform: translate3d(-8px, 50vh, 0) rotate(5deg);
+    opacity: 0.5;
+  }
+  75% {
+    transform: translate3d(15px, 80vh, 0) rotate(-3deg);
+    opacity: 0.4;
+  }
+  90% {
+    opacity: 0.25;
+  }
+  100% {
+    transform: translate3d(20px, 115vh, 0) rotate(8deg);
+    opacity: 0;
+  }
+}
+
+.falling-rupee {
+  position: absolute;
+  color: #ffd34e;
+  user-select: none;
+  pointer-events: none;
+  animation-name: rupee-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform, opacity;
+  text-shadow:
+    0 0 8px rgba(255, 211, 78, 0.45),
+    0 0 18px rgba(255, 193, 7, 0.2);
+}
+
+@keyframes float-ambient {
+  0%,
+  100% {
+    transform: translateY(0px) translateX(0px) rotate(0deg);
+  }
+  33% {
+    transform: translateY(-25px) translateX(8px) rotate(3deg);
+  }
+  66% {
+    transform: translateY(-10px) translateX(-6px) rotate(-3deg);
+  }
+}
+
+@keyframes float-logo {
+  0%,
+  100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(2deg);
+  }
+}
+
+.floating-rupee {
+  animation: float-ambient var(--drift-duration, 15s) ease-in-out infinite;
+  animation-delay: var(--drift-delay, 0s);
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-rupee {
+    animation: none !important;
+    transform: none !important;
+  }
 }
 

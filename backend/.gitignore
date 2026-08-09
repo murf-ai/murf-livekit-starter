@@ -1,6 +1,9 @@
 .env
 .env.*
 !.env.example
+
+# SQLite caller memory — contains PII, never commit
+data/
 .DS_Store
 __pycache__
 .idea

@@ -4,6 +4,10 @@ export interface AppConfig {
   pageDescription: string;
   companyName: string;
 
+  welcomeTitle?: string;
+  welcomeSubtitle?: string;
+  welcomeDescription?: string;
+
   supportsChatInput: boolean;
   supportsVideoInput: boolean;
   supportsScreenShare: boolean;
@@ -35,9 +39,13 @@ export interface AppConfig {
 
 export const APP_CONFIG_DEFAULTS: AppConfig = {
   // BharatPay — Pooja Voice Support Agent (#VoiceForBharat)
-  companyName: 'BharatPay',
+  companyName: 'BharatPay Support',
   pageTitle: 'Pooja — BharatPay Voice Support',
-  pageDescription: 'Talk to Pooja, your BharatPay AI support agent — UPI, payments, loans, and more, powered by Murf Falcon TTS. #VoiceForBharat',
+  pageDescription: 'Talk to Pooja, your BharatPay AI support agent — UPI, payments, loans, and more. #VoiceForBharat',
+
+  welcomeTitle: 'BharatPay Support',
+  welcomeSubtitle: 'POOJA: AI FINANCIAL VOICE ASSISTANT',
+  welcomeDescription: 'Get instant voice help with bank accounts, UPI payments, credit cards, or fraud safety in Hindi, English, and Hinglish.',
 
   supportsChatInput: true,
   supportsVideoInput: false,
@@ -45,15 +53,19 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   isPreConnectBufferEnabled: true,
 
   logo: '/bharatpay-logo.png',
-  accent: '#1a237e',         // Deep trust indigo — finance and payments
+  accent: '#7C3AED',         // Premium purple
   logoDark: '/bharatpay-logo.png',
-  accentDark: '#5c6bc0',     // Lighter indigo for dark mode
+  accentDark: '#8B5CF6',     // Violet glow
   startButtonText: 'Talk to Pooja',
 
-  // Aura visualizer — alive and conversational
-  audioVisualizerType: 'aura',
-  audioVisualizerColor: '#1a237e',
-  audioVisualizerColorDark: '#7986cb',
+  // Radial audio visualizer with violet glow
+  audioVisualizerType: 'radial',
+  audioVisualizerColor: '#7C3AED',
+  audioVisualizerColorDark: '#8B5CF6',
+  audioVisualizerColorShift: 0.3,
+  audioVisualizerBarCount: 5,
+  audioVisualizerRadialBarCount: 36,
+  audioVisualizerRadialRadius: 110,
 
   // agent dispatch configuration
   agentName: process.env.AGENT_NAME ?? undefined,
