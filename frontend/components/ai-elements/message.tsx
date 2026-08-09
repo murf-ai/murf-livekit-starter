@@ -30,9 +30,9 @@ export type MessageContentProps = HTMLAttributes<HTMLDivElement>;
 export const MessageContent = ({ children, className, ...props }: MessageContentProps) => (
   <div
     className={cn(
-      'is-user:dark flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-sm',
-      'group-[.is-user]:bg-secondary group-[.is-user]:text-foreground group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:px-4 group-[.is-user]:py-3',
-      'group-[.is-assistant]:text-foreground',
+      'is-user:dark flex w-fit max-w-full min-w-0 flex-col gap-2 overflow-hidden text-sm md:text-base',
+      'group-[.is-user]:bg-neutral-900/90 group-[.is-user]:border group-[.is-user]:border-white/10 group-[.is-user]:text-foreground group-[.is-user]:ml-auto group-[.is-user]:rounded-2xl group-[.is-user]:px-4.5 group-[.is-user]:py-3 group-[.is-user]:shadow-lg group-[.is-user]:backdrop-blur-md',
+      'group-[.is-assistant]:bg-slate-950/80 group-[.is-assistant]:border group-[.is-assistant]:border-emerald-500/25 group-[.is-assistant]:text-slate-100 group-[.is-assistant]:rounded-2xl group-[.is-assistant]:px-5 group-[.is-assistant]:py-3.5 group-[.is-assistant]:shadow-xl group-[.is-assistant]:shadow-emerald-950/20 group-[.is-assistant]:backdrop-blur-xl group-[.is-assistant]:leading-relaxed',
       className
     )}
     {...props}

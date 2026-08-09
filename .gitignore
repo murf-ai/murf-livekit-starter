@@ -4,3 +4,7 @@
 .DS_Store
 livekit-server
 
+
+# Local runtime data
+backend/data/
+

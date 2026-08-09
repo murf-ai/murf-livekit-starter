@@ -63,7 +63,7 @@ export function TileLayout({ chatOpen }: TileLayoutProps) {
       className={cn(
         'pointer-events-none absolute inset-x-0 z-20 flex justify-center',
         chatOpen
-          ? 'top-14 h-auto md:top-16'
+          ? 'top-12 h-auto md:top-14'
           : 'top-8 bottom-32 items-center md:top-12 md:bottom-40'
       )}
     >
@@ -86,7 +86,7 @@ export function TileLayout({ chatOpen }: TileLayoutProps) {
               <FinanceAvatarVideo
                 isSpeaking={agentState === 'speaking'}
                 alwaysPlay
-                size={chatOpen ? 'md' : 'hero'}
+                size={chatOpen ? 'sm' : 'hero'}
                 className="shadow-2xl"
               />
             </motion.div>
