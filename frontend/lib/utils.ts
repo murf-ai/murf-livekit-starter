@@ -95,6 +95,21 @@ export function getStyles(appConfig: AppConfig) {
  * @param appConfig - The app configuration
  * @returns A token source for a sandboxed LiveKit session
  */
+export function getCallerIdentity(): string {
+  const storageKey = 'voice_assistant_identity';
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  let identity = window.localStorage.getItem(storageKey);
+  if (!identity) {
+    identity = `voice_assistant_user_${Math.floor(Math.random() * 10_000)}`;
+    window.localStorage.setItem(storageKey, identity);
+  }
+
+  return identity;
+}
+
 export function getSandboxTokenSource(appConfig: AppConfig) {
   return TokenSource.custom(async () => {
     const url = new URL(process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT!, window.location.origin);
@@ -114,6 +129,7 @@ export function getSandboxTokenSource(appConfig: AppConfig) {
         },
         body: JSON.stringify({
           room_config: roomConfig,
+          identity: getCallerIdentity(),
         }),
       });
       return await res.json();
