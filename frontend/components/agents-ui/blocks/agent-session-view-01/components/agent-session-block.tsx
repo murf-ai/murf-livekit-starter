@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { Track } from 'livekit-client';
 import { AnimatePresence, type MotionProps, motion } from 'motion/react';
 import { useAgent, useSessionContext, useSessionMessages } from '@livekit/components-react';
 import { AgentChatTranscript } from '@/components/agents-ui/agent-chat-transcript';
@@ -151,6 +152,8 @@ export interface AgentSessionView_01Props {
   audioVisualizerRadialRadius?: number;
   /** Stroke width of the wave path when `audioVisualizerType` is `wave`. */
   audioVisualizerWaveLineWidth?: number;
+  /** Called when microphone access or selection fails. */
+  onMicrophoneError?: (error: Error) => void;
   /** Optional class name merged onto the outer `<section>` container. */
   className?: string;
 }
@@ -171,6 +174,7 @@ export function AgentSessionView_01({
   audioVisualizerRadialBarCount,
   audioVisualizerRadialRadius,
   audioVisualizerWaveLineWidth,
+  onMicrophoneError,
   ref,
   className,
   ...props
@@ -281,6 +285,9 @@ export function AgentSessionView_01({
             isChatOpen={chatOpen}
             isConnected={session.isConnected}
             onDisconnect={session.end}
+            onDeviceError={({ source, error }) => {
+              if (source === Track.Source.Microphone) onMicrophoneError?.(error);
+            }}
             onIsChatOpenChange={setChatOpen}
           />
         </div>

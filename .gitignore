@@ -4,3 +4,5 @@
 .DS_Store
 *-dev.log
 *-dev.err.log
+backend/data/*.sqlite3
+.run/

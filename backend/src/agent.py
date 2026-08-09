@@ -1,4 +1,5 @@
 import logging
+import os
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
@@ -17,6 +18,9 @@ from livekit.agents import (
 )
 from livekit.plugins import deepgram, google, murf, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
+
+from knowledge import KnowledgeBase
+from memory import CallerMemory, CallerMemoryStore
 
 logger = logging.getLogger("agent")
 
@@ -44,6 +48,11 @@ sellers, and stock. Tool results are snapshots, not guarantees. Say "listed pric
 and explain that the seller must confirm the final price, availability, payment, and
 delivery date. If a tool has no answer, say you do not have that information. Never
 invent personal data, policies, discounts, order status, or seller decisions.
+For schemes, crop guidance, training, or other knowledge questions, always call
+search_knowledge_base. Answer only from its returned passages, mention the document
+title naturally, and say when the knowledge base has no relevant answer. Never treat
+a retrieved document as proof that the caller is eligible or that an outcome is
+approved. Suggest checking the cited official source for current details.
 
 LANGUAGE
 Detect the user's language and reply in the same language when possible. Mirror a
@@ -51,6 +60,39 @@ Hindi-English mix with natural conversational Hinglish, including the user's lev
 formality. If the user switches languages, switch with them. Keep product names and
 numbers clear. If you cannot confidently understand the language, apologise and ask
 the user to repeat in Hindi or English. Never mock grammar, accents, or word choice.
+Understand common Hindi shopping words and Romanized variants. Examples: achar or
+achaar means pickle, sajawati chiz or sajawati cheez means decorative handicrafts,
+and sarso or sarson ka tel means mustard oil. Reply using the customer's wording.
+Always write each language in its native script. Write every Hindi word in Devanagari,
+never Romanized Hindi, even when the caller speaks Romanized Hindi. English product
+names, identifiers, and source titles may stay in English. Apply the same native-script
+rule to every other non-English language.
+
+CALLER MEMORY
+At the beginning of a conversation, use lookup_caller to check whether this caller is
+known. Never guess an identity or reveal one caller's memory to another caller. If a
+record is found, greet the caller by name and continue from the saved last conversation
+or another relevant fact. Do not repeat the generic first-call introduction or replay
+the same canned greeting. If no record is found, continue normally and ask their name
+only when useful. Before every save, state exactly what you propose to remember and ask
+for permission in a separate turn. Call save_caller_memory only after an explicit yes
+to that exact proposal. Pass
+consent_given=true only for that explicit yes; silence, ambiguity, or consent to an
+order is not memory consent. If the caller says no, do not call the save tool. Useful
+local-commerce facts are a short last-conversation summary, recent order, usual
+quantity, and preferred delivery slot. Never save call details automatically. If the
+caller asks to be forgotten, call forget_caller immediately; deletion needs no extra
+confirmation. Clearly report whether a saved record was removed.
+
+When the caller indicates they are finished, says goodbye, or asks to end the call,
+do not say goodbye immediately if there is a useful name or conversation detail that
+has not yet been saved with consent. First state the exact short detail you propose to
+remember. Then ask: "Would you like me to remember that for your next call?" In Hindi
+ask: "क्या आप चाहेंगे कि मैं यह बात आपकी अगली कॉल के लिए याद रखूँ?" Wait for their
+answer. If they explicitly agree, call save_caller_memory before saying goodbye. If
+they refuse, say that you will not save it before saying goodbye. If they do not answer
+clearly, do not save anything; ask once for yes or no. Do not ask again when nothing
+useful was learned or when the caller already answered this consent question.
 
 GUARDRAILS
 Refuse requests to fabricate seller confirmation, manipulate records, deceive or harm
@@ -93,6 +135,28 @@ FIRST_TURN_GREETING = (
 )
 
 
+def _returning_caller_greeting(memory: CallerMemory) -> str:
+    last_conversation = memory.facts.get("last_conversation")
+    recent_order = memory.facts.get("recent_order")
+    context = last_conversation or recent_order
+    if memory.language_preference.casefold() == "hindi":
+        if context:
+            return (
+                f"नमस्ते, {memory.name}। पिछली बार हम {context} पर बात कर रहे थे। "
+                "क्या हम वहीं से आगे बढ़ें?"
+            )
+        return f"नमस्ते, {memory.name}। आपका फिर से स्वागत है। आज मैं कैसे मदद करूँ?"
+    if context:
+        return (
+            f"Namaste, {memory.name}. Last time we were discussing {context}. "
+            "Would you like to continue from there?"
+        )
+    return (
+        f"Namaste, {memory.name}. Welcome back. "
+        "How can I help with local shopping today?"
+    )
+
+
 @dataclass(frozen=True)
 class CatalogueItem:
     item_id: str
@@ -132,18 +196,162 @@ CATALOGUE = (
         10,
     ),
     CatalogueItem("HOM-408", "Natural coir doormat", "Coastal Works", "home", 450, 5),
+    CatalogueItem(
+        "ELC-512",
+        "Portable Bluetooth speaker",
+        "Nagar Electronics",
+        "electronics audio speaker",
+        899,
+        9,
+    ),
 )
 
 BUSINESS_INVENTORY = {
     "mustard oil": {"quantity": 15, "unit": "liters"},
 }
 
+INVENTORY_ALIASES = {
+    "sarson ka tel": "mustard oil",
+    "sarso ka tel": "mustard oil",
+    "सरसों का तेल": "mustard oil",
+    "सरसो का तेल": "mustard oil",
+    "sarson": "mustard oil",
+    "sarso": "mustard oil",
+    "सरसों": "mustard oil",
+    "सरसो": "mustard oil",
+}
+
+CATALOGUE_ALIASES = {
+    "bluetooth speaker": "bluetooth speaker",
+    "aam ka achaar": "mango pickle",
+    "aam ka achar": "mango pickle",
+    "आम का अचार": "mango pickle",
+    "sajawati cheez": "handicrafts",
+    "sajawati chiz": "handicrafts",
+    "sajawti cheez": "handicrafts",
+    "sajawti chiz": "handicrafts",
+    "सजावटी चीज़": "handicrafts",
+    "सजावटी चीज": "handicrafts",
+    "achaar": "pickle",
+    "achar": "pickle",
+    "अचार": "pickle",
+    "ब्लूटूथ स्पीकर": "bluetooth speaker",
+    "ब्लूटूथ speaker": "bluetooth speaker",
+}
+
+
+def _matching_alias(value: str, aliases: dict[str, str]) -> str | None:
+    normalized = " ".join(value.casefold().strip().split())
+    for alias in sorted(aliases, key=len, reverse=True):
+        if alias in normalized:
+            return aliases[alias]
+    return None
+
+
+def _normalize_inventory_name(product_name: str) -> str:
+    return (
+        _matching_alias(product_name, INVENTORY_ALIASES)
+        or product_name.casefold().strip()
+    )
+
+
+def _normalize_catalogue_query(query: str) -> str:
+    return _matching_alias(query, CATALOGUE_ALIASES) or query.casefold().strip()
+
 
 class Assistant(Agent):
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        caller_id: str = "test-caller",
+        memory_store: CallerMemoryStore | None = None,
+        knowledge_base: KnowledgeBase | None = None,
+    ) -> None:
         super().__init__(instructions=SYSTEM_PROMPT)
+        self.caller_id = caller_id
+        database_path = os.getenv("CALLER_MEMORY_DB")
+        self.memory_store = memory_store or (
+            CallerMemoryStore(database_path) if database_path else CallerMemoryStore()
+        )
+        self.knowledge_base = knowledge_base or KnowledgeBase()
         self.orders: list[dict[str, str | int]] = []
         self.credit_entries: list[dict[str, str | int]] = []
+
+    @function_tool
+    async def lookup_caller(self, context: RunContext) -> str:
+        """Look up the current caller's saved profile and shopping preferences."""
+        del context
+        memory = self.memory_store.lookup(self.caller_id)
+        if memory is None:
+            return "No saved memory was found for this caller."
+        facts = ", ".join(
+            f"{key.replace('_', ' ')}: {value}" for key, value in memory.facts.items()
+        )
+        return (
+            f"Returning caller: {memory.name}. Language preference: "
+            f"{memory.language_preference}. Saved facts: {facts or 'none'}."
+        )
+
+    @function_tool
+    async def save_caller_memory(
+        self,
+        context: RunContext,
+        name: str,
+        language_preference: str,
+        consent_given: bool,
+        recent_order: str = "",
+        last_conversation: str = "",
+        usual_quantity: str = "",
+        preferred_delivery_slot: str = "",
+    ) -> str:
+        """Save facts only after the caller explicitly agrees to remember them.
+
+        Args:
+            name: The caller's name.
+            language_preference: Language the caller prefers.
+            consent_given: True only after an explicit yes to saving these facts.
+            recent_order: A recent product or order useful on the next call.
+            last_conversation: Short summary the caller agreed to resume next time.
+            usual_quantity: The caller's usual product quantity.
+            preferred_delivery_slot: The caller's preferred delivery time.
+        """
+        del context
+        facts = {
+            "recent_order": recent_order.strip(),
+            "last_conversation": last_conversation.strip(),
+            "usual_quantity": usual_quantity.strip(),
+            "preferred_delivery_slot": preferred_delivery_slot.strip(),
+        }
+        saved = self.memory_store.save(
+            user_id=self.caller_id,
+            name=name,
+            language_preference=language_preference,
+            facts=facts,
+            consent_given=consent_given,
+        )
+        if not consent_given:
+            return "Memory not saved: the caller did not explicitly consent."
+        if not saved:
+            return "Memory not saved: a caller name is required."
+        return "Caller memory saved. It will be available on their next call."
+
+    @function_tool
+    async def forget_caller(self, context: RunContext) -> str:
+        """Delete all saved memory for the current caller when they ask to forget it."""
+        del context
+        forgotten = self.memory_store.forget(self.caller_id)
+        if forgotten:
+            return "Your saved caller record was deleted. I no longer remember you."
+        return "No saved caller record existed, so there was nothing to delete."
+
+    @function_tool
+    async def search_knowledge_base(self, context: RunContext, query: str) -> str:
+        """Retrieve source-labelled passages for knowledge and guidance questions.
+
+        Args:
+            query: The caller's question about schemes, farming, or learning material.
+        """
+        del context
+        return self.knowledge_base.grounded_context(query)
 
     @function_tool
     async def check_inventory(self, context: RunContext, product_name: str) -> str:
@@ -153,7 +361,7 @@ class Assistant(Agent):
             product_name: Product to look up, such as mustard oil.
         """
         del context
-        normalized_name = product_name.casefold().strip()
+        normalized_name = _normalize_inventory_name(product_name)
         stock = BUSINESS_INVENTORY.get(normalized_name)
         if stock is None:
             return f"No inventory record was found for {product_name.strip()}."
@@ -204,7 +412,7 @@ class Assistant(Agent):
             query: What the customer wants, such as pickles, textiles, or ART-101.
         """
         del context
-        terms = query.casefold().split()
+        terms = _normalize_catalogue_query(query).split()
         matches = [
             item
             for item in CATALOGUE
@@ -299,6 +507,12 @@ async def my_agent(ctx: JobContext):
         "room": ctx.room.name,
     }
 
+    # Connect first so the participant identity can key persistent caller memory.
+    await ctx.connect()
+    participant = await ctx.wait_for_participant()
+    assistant = Assistant(caller_id=participant.identity)
+    caller_memory = assistant.memory_store.lookup(participant.identity)
+
     # Set up a voice AI pipeline using Murf Falcon, Gemini, Deepgram, and the LiveKit turn detector
     session = AgentSession(
         # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
@@ -347,7 +561,7 @@ async def my_agent(ctx: JobContext):
 
     # Start the session, which initializes the voice pipeline and warms up the models
     await session.start(
-        agent=Assistant(),
+        agent=assistant,
         room=ctx.room,
         room_options=room_io.RoomOptions(
             audio_input=room_io.AudioInputOptions(
@@ -361,10 +575,12 @@ async def my_agent(ctx: JobContext):
         ),
     )
 
-    # Join the room and connect to the user
-    await ctx.connect()
-
-    await session.say(FIRST_TURN_GREETING, allow_interruptions=True)
+    greeting = (
+        _returning_caller_greeting(caller_memory)
+        if caller_memory is not None
+        else FIRST_TURN_GREETING
+    )
+    await session.say(greeting, allow_interruptions=True)
 
 
 if __name__ == "__main__":

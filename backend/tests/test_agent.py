@@ -1,7 +1,157 @@
 import pytest
 from livekit.agents import AgentSession, inference, llm
 
-from agent import FIRST_TURN_GREETING, Assistant
+from agent import (
+    CATALOGUE,
+    FIRST_TURN_GREETING,
+    SYSTEM_PROMPT,
+    Assistant,
+    _normalize_catalogue_query,
+    _normalize_inventory_name,
+    _returning_caller_greeting,
+)
+from knowledge import KnowledgeBase
+from memory import CallerMemory, CallerMemoryStore
+
+
+def test_returning_caller_greeting_resumes_saved_context() -> None:
+    memory = CallerMemory(
+        user_id="caller-1",
+        name="Ramesh",
+        language_preference="English",
+        facts={"last_conversation": "a mango pickle delivery"},
+        last_interaction="2026-08-08T00:00:00+00:00",
+    )
+
+    greeting = _returning_caller_greeting(memory)
+
+    assert greeting.startswith("Namaste, Ramesh.")
+    assert "a mango pickle delivery" in greeting
+    assert "continue from there" in greeting
+
+
+def test_returning_caller_greeting_without_context_starts_with_namaste_name() -> None:
+    memory = CallerMemory(
+        user_id="caller-2",
+        name="Asha",
+        language_preference="English",
+        facts={},
+        last_interaction="2026-08-08T00:00:00+00:00",
+    )
+
+    greeting = _returning_caller_greeting(memory)
+
+    assert greeting.startswith("Namaste, Asha.")
+
+
+def test_hindi_returning_greeting_uses_devanagari() -> None:
+    memory = CallerMemory(
+        user_id="caller-3",
+        name="आशा",
+        language_preference="Hindi",
+        facts={"last_conversation": "आम के अचार की डिलीवरी"},
+        last_interaction="2026-08-08T00:00:00+00:00",
+    )
+
+    greeting = _returning_caller_greeting(memory)
+
+    assert greeting.startswith("नमस्ते, आशा।")
+    assert "आम के अचार की डिलीवरी" in greeting
+    assert "Namaste" not in greeting
+
+
+def test_caller_memory_persists_across_store_instances(tmp_path) -> None:
+    database_path = tmp_path / "caller-memory.sqlite3"
+    first_store = CallerMemoryStore(database_path)
+
+    saved = first_store.save(
+        user_id="livekit-user-42",
+        name="Ramesh",
+        language_preference="Hindi",
+        facts={
+            "past_orders": ["mango pickle"],
+            "usual_quantities": {"mango pickle": 2},
+            "preferred_delivery_slot": "evening",
+        },
+        consent_given=True,
+    )
+
+    assert saved is True
+    returning_caller = CallerMemoryStore(database_path).lookup("livekit-user-42")
+    assert returning_caller is not None
+    assert returning_caller.name == "Ramesh"
+    assert returning_caller.facts["preferred_delivery_slot"] == "evening"
+
+
+def test_caller_memory_refuses_write_without_consent(tmp_path) -> None:
+    store = CallerMemoryStore(tmp_path / "caller-memory.sqlite3")
+
+    saved = store.save(
+        user_id="livekit-user-42",
+        name="Ramesh",
+        language_preference="Hindi",
+        facts={"preferred_delivery_slot": "evening"},
+        consent_given=False,
+    )
+
+    assert saved is False
+    assert store.lookup("livekit-user-42") is None
+
+
+def test_caller_memory_merges_new_facts(tmp_path) -> None:
+    store = CallerMemoryStore(tmp_path / "caller-memory.sqlite3")
+    store.save(
+        user_id="caller-1",
+        name="Asha",
+        language_preference="English",
+        facts={"preferred_delivery_slot": "morning"},
+        consent_given=True,
+    )
+
+    store.save(
+        user_id="caller-1",
+        name="Asha",
+        language_preference="Hindi",
+        facts={"usual_quantities": {"coir doormat": 1}},
+        consent_given=True,
+    )
+
+    caller = store.lookup("caller-1")
+    assert caller is not None
+    assert caller.language_preference == "Hindi"
+    assert caller.facts == {
+        "preferred_delivery_slot": "morning",
+        "usual_quantities": {"coir doormat": 1},
+    }
+
+
+def test_forget_caller_wipes_record_and_is_idempotent(tmp_path) -> None:
+    store = CallerMemoryStore(tmp_path / "caller-memory.sqlite3")
+    store.save(
+        user_id="caller-1",
+        name="Asha",
+        language_preference="Hindi",
+        facts={"last_conversation": "एक ऑर्डर"},
+        consent_given=True,
+    )
+
+    assert store.forget("caller-1") is True
+    assert store.lookup("caller-1") is None
+    assert store.forget("caller-1") is False
+
+
+def test_knowledge_base_returns_grounded_official_source() -> None:
+    context = KnowledgeBase().grounded_context("How can a farmer register on e-NAM?")
+
+    assert "e-NAM farmer registration and benefits" in context
+    assert "https://www.enam.gov.in/" in context
+    assert "registration has no fee" in context
+
+
+def test_knowledge_base_reports_when_no_document_matches() -> None:
+    context = KnowledgeBase().grounded_context("quantum particle accelerator")
+
+    assert context == "No relevant passage was found in the knowledge base."
 
 
 def test_first_turn_greeting_states_identity_and_job() -> None:
@@ -12,6 +162,67 @@ def test_first_turn_greeting_states_identity_and_job() -> None:
     assert "local" in greeting
     assert "products" in greeting
     assert "order" in greeting
+
+
+def test_system_prompt_requires_memory_consent_before_goodbye() -> None:
+    prompt = " ".join(SYSTEM_PROMPT.casefold().split())
+
+    assert "before saying goodbye" in prompt
+    assert "wait for their answer" in prompt
+    assert "do not save" in prompt
+    assert "याद रखूँ" in SYSTEM_PROMPT
+
+
+@pytest.mark.parametrize(
+    ("spoken_name", "inventory_name"),
+    [
+        ("sarso", "mustard oil"),
+        ("sarson ka tel", "mustard oil"),
+        ("सरसों का तेल", "mustard oil"),
+    ],
+)
+def test_normalizes_hindi_inventory_names(
+    spoken_name: str, inventory_name: str
+) -> None:
+    assert _normalize_inventory_name(spoken_name) == inventory_name
+
+
+@pytest.mark.parametrize(
+    ("spoken_query", "catalogue_query"),
+    [
+        ("achar", "pickle"),
+        ("aam ka achaar", "mango pickle"),
+        ("अचार", "pickle"),
+        ("sajawati chiz", "handicrafts"),
+        ("सजावटी चीज़", "handicrafts"),
+    ],
+)
+def test_normalizes_hindi_catalogue_terms(
+    spoken_query: str, catalogue_query: str
+) -> None:
+    assert _normalize_catalogue_query(spoken_query) == catalogue_query
+
+
+@pytest.mark.parametrize(
+    "spoken_query",
+    [
+        "Bluetooth speaker",
+        "Mujhe ₹1,000 ke andar ek achha Bluetooth speaker chahiye",
+        "ब्लूटूथ स्पीकर",
+        "मुझे ₹1,000 के अंदर एक अच्छा ब्लूटूथ स्पीकर चाहिए",
+    ],
+)
+def test_catalogue_contains_bluetooth_speaker_under_1000(spoken_query: str) -> None:
+    query = _normalize_catalogue_query(spoken_query)
+    matches = [
+        item
+        for item in CATALOGUE
+        if all(term in Assistant._catalogue_search_text(item) for term in query.split())
+    ]
+
+    assert len(matches) == 1
+    assert matches[0].name == "Portable Bluetooth speaker"
+    assert matches[0].price_inr <= 1000
 
 
 def _llm() -> llm.LLM:

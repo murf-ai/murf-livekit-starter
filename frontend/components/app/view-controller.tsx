@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { MediaDeviceFailure } from 'livekit-client';
 import { MicOffIcon, RefreshCwIcon, ShoppingBagIcon } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { AnimatePresence, motion } from 'motion/react';
-import { useSessionContext } from '@livekit/components-react';
+import { SessionEvent, useSessionContext } from '@livekit/components-react';
 import type { AppConfig } from '@/app-config';
 import { AgentSessionView_01 } from '@/components/agents-ui/blocks/agent-session-view-01';
 import { WelcomeView } from '@/components/app/welcome-view';
@@ -36,12 +37,33 @@ interface ViewControllerProps {
 }
 
 export function ViewController({ appConfig }: ViewControllerProps) {
-  const { isConnected, start } = useSessionContext();
+  const session = useSessionContext();
+  const { isConnected, start } = session;
   const { resolvedTheme } = useTheme();
   const [viewState, setViewState] = useState<'ready' | 'connecting' | 'active' | 'ended' | 'error'>(
     'ready'
   );
   const connectedOnce = useRef(false);
+
+  const showMicrophoneError = useCallback((error: Error) => {
+    const failure = MediaDeviceFailure.getFailure(error);
+    const permissionDenied =
+      failure === MediaDeviceFailure.PermissionDenied ||
+      error.name === 'NotAllowedError' ||
+      /permission denied|not allowed/i.test(error.message);
+
+    if (permissionDenied) {
+      setViewState('error');
+      void session.end();
+    }
+  }, [session]);
+
+  useEffect(() => {
+    session.internal.emitter.on(SessionEvent.MediaDevicesError, showMicrophoneError);
+    return () => {
+      session.internal.emitter.off(SessionEvent.MediaDevicesError, showMicrophoneError);
+    };
+  }, [session.internal.emitter, showMicrophoneError]);
 
   useEffect(() => {
     if (isConnected) {
@@ -55,10 +77,10 @@ export function ViewController({ appConfig }: ViewControllerProps) {
   const handleStart = async () => {
     setViewState('connecting');
     try {
-      await start();
+      await start({ tracks: { microphone: { enabled: true } } });
     } catch (error) {
       console.error('Unable to start voice session', error);
-      setViewState('error');
+      showMicrophoneError(error instanceof Error ? error : new Error(String(error)));
     }
   };
 
@@ -165,6 +187,7 @@ export function ViewController({ appConfig }: ViewControllerProps) {
           audioVisualizerRadialRadius={appConfig.audioVisualizerRadialRadius}
           audioVisualizerWaveLineWidth={appConfig.audioVisualizerWaveLineWidth}
           preConnectMessage="Mitra is listening — बोलिए, मैं सुन रहा हूँ"
+          onMicrophoneError={showMicrophoneError}
           className="fixed inset-0"
         />
       )}
