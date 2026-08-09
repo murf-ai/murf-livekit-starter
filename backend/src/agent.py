@@ -1,7 +1,12 @@
+import json
 import logging
+
+logging.basicConfig(level=logging.DEBUG)
 
 from dotenv import load_dotenv
 from livekit import rtc
+from prompt import SYSTEM_PROMPT
+from db import lookup_caller, save_caller_memory_db
 from livekit.agents import (
     Agent,
     AgentServer,
@@ -20,23 +25,6 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 logger = logging.getLogger("agent")
 
 load_dotenv(".env.local")
-
-# Change this prompt to change what your voice agent does.
-# See README.md for example prompts (customer support, language tutor, receptionist).
-SYSTEM_PROMPT = """You are FinSafe, a warm, professional, and accessible voice assistant for financial services.
-Your primary role is to educate users on:
-1. Government financial schemes (such as PMJDY, PMSBY, PMJJBY, Atal Pension Yojana, Sukanya Samriddhi Yojana, PM Mudra Yojana, Senior Citizen Savings Scheme, Sovereign Gold Bond).
-2. General banking literacy (KYC, UPI safety, savings vs current accounts, fixed deposits, credit scores, interest rates).
-3. Fraud awareness and scam protection (detecting OTP/PIN scams, phishing links, urgent fake KYC block messages, fake investment schemes, screen sharing app traps).
-
-Guidelines for your speech output:
-- Speak in clear, plain language without financial jargon. Explain complex terms simply.
-- Keep your responses concise, conversational, and direct, suitable for voice output.
-- NEVER use special symbols, emojis, markdown formatting, bullet points, or bold text in your spoken responses.
-- Safety Rule: ALWAYS remind users NEVER to share OTPs, PINs, passwords, CVVs, or full card numbers with anyone over the phone or online, including bank officials or yourself.
-- If a user describes a potential scam, evaluate the risk immediately and provide urgent action steps (such as hanging up, blocking the sender, calling official bank helpline, or reporting on 1930 Cybercrime Helpline).
-"""
-
 
 class Assistant(Agent):
     def __init__(self) -> None:
@@ -213,6 +201,85 @@ class Assistant(Agent):
 
         return f"{term} is a common financial concept. Ask your bank or financial advisor for specific details regarding your account."
 
+    def _resolve_user_id(self, context: RunContext, user_id: str) -> str:
+        if (
+            user_id
+            and user_id.strip()
+            and user_id.strip().lower() not in ["none", "unknown", "null", "undefined"]
+        ):
+            return user_id.strip()
+
+        try:
+            if context and hasattr(context, "session") and context.session:
+                room = getattr(context.session, "room", None)
+                if room and hasattr(room, "remote_participants") and room.remote_participants:
+                    for p in room.remote_participants.values():
+                        if p.identity:
+                            return p.identity
+        except Exception as e:
+            logger.warning(f"Failed to resolve participant identity from room: {e}")
+
+        return "caller_default"
+
+    @function_tool
+    async def lookup_caller_memory(
+        self, context: RunContext, user_id: str = ""
+    ) -> str:
+        """Lookup persistent caller memory in SQLite database.
+        Returns the caller's saved name, language preference, financial facts, and last interaction timestamp if found.
+
+        Args:
+            user_id: Caller or user ID string. If empty, uses the current participant identity.
+        """
+        target_id = self._resolve_user_id(context, user_id)
+        logger.info(f"Looking up memory for user_id='{target_id}'")
+        try:
+            res = lookup_caller(target_id)
+            return json.dumps(res, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Error in lookup_caller_memory tool: {e}", exc_info=True)
+            return json.dumps({"exists": False, "error": str(e)})
+
+    @function_tool
+    async def save_caller_memory(
+        self,
+        context: RunContext,
+        user_id: str = "",
+        name: str = "",
+        language_preference: str = "",
+        fact_key: str = "",
+        fact_value: str = "",
+    ) -> str:
+        """Save caller information or financial facts to persistent SQLite memory.
+        CRITICAL MANDATORY RULE: You MUST ONLY call this function AFTER asking the caller for explicit permission ('Would you like me to save that?') and receiving user consent ('YES'). NEVER call silently.
+
+        Args:
+            user_id: Caller or user ID string. If empty, uses current participant identity.
+            name: Caller's name if provided and consented.
+            language_preference: Caller's preferred language.
+            fact_key: Key for financial fact (e.g. 'scheme_checked', 'eligibility_status', 'financial_goal').
+            fact_value: Non-sensitive fact value (e.g. 'PMJDY', 'Eligible for zero-balance account and 2 Lakh insurance'). DO NOT include bank/Aadhaar/PAN/OTP/passwords.
+        """
+        target_id = self._resolve_user_id(context, user_id)
+        logger.info(
+            f"Saving caller memory for user_id='{target_id}', name='{name}', lang='{language_preference}', fact=('{fact_key}': '{fact_value}')"
+        )
+        try:
+            facts = {}
+            if fact_key and fact_value:
+                facts[fact_key] = fact_value
+
+            res = save_caller_memory_db(
+                user_id=target_id,
+                name=name if name else None,
+                language_preference=language_preference if language_preference else None,
+                facts=facts if facts else None,
+            )
+            return json.dumps(res, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Error in save_caller_memory tool: {e}", exc_info=True)
+            return json.dumps({"success": False, "error": str(e)})
+
 
 server = AgentServer()
 
@@ -236,21 +303,22 @@ async def my_agent(ctx: JobContext):
     session = AgentSession(
         # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
         # See all available models at https://docs.livekit.io/agents/models/stt/
-        stt=deepgram.STT(model="nova-3"),
-        # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
+stt=deepgram.STT(
+    model="nova-3",
+    language="multi",
+),        # A Large Language Model (LLM) is your agent's brain, processing user input and generating a response
         # See all available models at https://docs.livekit.io/agents/models/llm/
         llm=google.LLM(
-            model="gemini-3.5-flash",
+            model="gemini-3.5-flash-lite",
         ),
         # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
         # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
-        tts=murf.TTS(
-            voice="en-IN-pooja",
-            locale="en-IN",
-            style="Conversation",
-            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-            text_pacing=True,
-        ),
+       tts=murf.TTS(
+    voice="hi-IN-anisha",
+    style="Conversation",
+    tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+    text_pacing=True,
+),
         # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
         # See more at https://docs.livekit.io/agents/build/turns
         turn_detection=MultilingualModel(),
@@ -294,8 +362,42 @@ async def my_agent(ctx: JobContext):
         ),
     )
 
-    # Join the room and connect to the user
+    # Join the room and connect to the user FIRST, before generating any reply
     await ctx.connect()
+
+    # Look up caller memory directly in Python (not as an LLM tool call) so the
+    # very first LLM turn is a plain greeting, never a function call.
+    # Gemini requires a function call to come right after a user turn or a
+    # function-response turn — calling a tool as the agent's first-ever turn
+    # violates that and causes a 400 "function call turn" error.
+    caller_id = "caller_default"
+    if ctx.room and ctx.room.remote_participants:
+        for p in ctx.room.remote_participants.values():
+            if p.identity:
+                caller_id = p.identity
+                break
+
+    try:
+        memory = lookup_caller(caller_id)
+    except Exception as e:
+        logger.warning(f"Caller memory lookup failed: {e}")
+        memory = {"exists": False}
+
+    if memory.get("exists"):
+        greeting_instructions = (
+            f"The caller has been here before. Their saved info: {json.dumps(memory, ensure_ascii=False)}. "
+            "Greet them warmly by their saved name in their preferred language if known "
+            "(e.g. 'Namaste Ramesh, welcome back!'), reference their saved facts naturally, "
+            "and ask if they'd like to continue from last time. Do not call any tools for this greeting."
+        )
+    else:
+        greeting_instructions = (
+            "This is a new caller with no saved memory. Introduce yourself as FinGuide, "
+            "your AI Financial Guidance Assistant, and ask how you can help them today. "
+            "Do not call any tools for this greeting."
+        )
+
+    await session.generate_reply(instructions=greeting_instructions)
 
 
 if __name__ == "__main__":
