@@ -21,15 +21,47 @@ from livekit.plugins import deepgram, google, murf, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 import db
+import schemes
 from prompt import SYSTEM_PROMPT
 
 logger = logging.getLogger("agent")
 
 load_dotenv(".env.local")
 
-# Intro speech disabled — users found the long greeting slow and interruptive.
-# Keep empty so session starts listening immediately.
-FIRST_GREETING = ""
+# Spoken once when the session starts — short so it is not interruptive.
+# Long intros made the call feel slow; empty greeting made the agent feel dead.
+FIRST_GREETING = (
+    "नमस्ते! मैं जन सहाय हूँ। सरकारी योजनाएँ, पात्रता, और दस्तावेज़ सूची में "
+    "मदद कर सकता हूँ। बताइए, आज कैसे मदद करूँ?"
+)
+
+# Short greets that must NOT be treated as STT noise (single-word is fine).
+_ALLOWED_SHORT_GREETS = {
+    "hi",
+    "hello",
+    "hey",
+    "yo",
+    "namaste",
+    "namaskar",
+    "hola",
+    "thanks",
+    "thank you",
+    "धन्यवाद",
+    "शुक्रिया",
+    "नमस्ते",
+    "नमस्कार",
+    "हां",
+    "हाँ",
+    "जी",
+    "yes",
+    "no",
+    "ok",
+    "okay",
+    "theek",
+    "thik",
+    "accha",
+    "achha",
+}
 
 # Strong romanized Hindi / Hinglish markers (avoid English-only words).
 HINDI_KEYWORDS = {
@@ -187,6 +219,8 @@ _ENGLISH_MARKERS = {
     "list",
     "give",
     "show",
+    "i'm",
+    "i am",
 }
 
 # Marker used only inside chat context; stripped if re-seen so locks never stack.
@@ -218,6 +252,15 @@ def detect_reply_language(transcript: str, stt_language: str | None = None) -> s
     hindi_hits = sum(1 for w in latin_words if w in HINDI_KEYWORDS)
     en_hits = sum(1 for w in latin_words if w in _ENGLISH_MARKERS)
 
+    logger.debug(
+        "Lang detect: text=%r, latin_words=%d, hindi_hits=%d, en_hits=%d, stt=%s",
+        text[:100],
+        len(latin_words),
+        hindi_hits,
+        en_hits,
+        stt_language,
+    )
+
     # Clear English intent
     if en_hits >= 2 and hindi_hits <= 1:
         return "en"
@@ -235,6 +278,12 @@ def detect_reply_language(transcript: str, stt_language: str | None = None) -> s
         return "en"
     if lang.startswith("hi"):
         return "hi"
+
+    # Prefer English for short yes/no and "i'm" phrases (better for first English turns).
+    text_lower = text.lower()
+    if any(w in text_lower for w in ["i'm", "i am", "yes", "no", "haan", "nahi", "nahi", "haan"]):
+        return "en"
+
     # Prefer English when mixed Latin text is ambiguous (better UX for English users).
     if en_hits >= 1:
         return "en"
@@ -263,16 +312,16 @@ def _strip_lang_locks(turn_ctx: llm.ChatContext) -> None:
 # Extract a person name from common English/Hindi intro phrases.
 _NAME_PATTERNS = [
     re.compile(
-        r"(?:my name is|i am|i'm|this is|call me)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s'.-]{1,40})",
+        r"(?:my name is|i am|i'm|this is|call me)\s+([A-Z][A-Za-z\u0900-\u097F\s'.-]{1,40})",
         re.IGNORECASE,
     ),
     re.compile(
-        r"(?:mera naam|meri naam|main|mai)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s'.-]{1,40})"
+        r"(?:mera naam|meri naam|main|mai)\s+([A-Z][A-Za-z\u0900-\u097F\s'.-]{1,40})"
         r"(?:\s+hoon|\s+hun|\s+hu|\s+hai)?",
         re.IGNORECASE,
     ),
     re.compile(
-        r"(?:naam hai|naam hain)\s+([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s'.-]{1,40})",
+        r"(?:naam hai|naam hain)\s+([A-Z][A-Za-z\u0900-\u097F\s'.-]{1,40})",
         re.IGNORECASE,
     ),
 ]
@@ -298,6 +347,13 @@ _NAME_STOPWORDS = {
     "the",
     "a",
     "an",
+    "i",
+    "am",
+    "i'm",
+    "eligible",
+    "32",
+    "thirty",
+    "two",
 }
 
 
@@ -409,9 +465,166 @@ class Assistant(Agent):
         logger.info("save_caller_memory saved profile for %s: %s", clean_name, res)
         return json.dumps(res)
 
-    def _auto_memory_for_turn(
-        self, turn_ctx: llm.ChatContext, text: str
-    ) -> None:
+    @function_tool
+    async def check_scheme_eligibility(
+        self,
+        ctx: RunContext,
+        scheme_name: str,
+        age: int | None = None,
+        has_bank_account: bool | None = None,
+        is_indian_resident: bool | None = None,
+        monthly_income_inr: int | None = None,
+        already_has_scheme: bool | None = None,
+    ) -> str:
+        """Check if a caller is likely eligible for an Indian financial scheme
+        (PMJDY, PMSBY, PMJJBY, or APY) using answers already collected in this call.
+
+        WHEN TO CALL:
+        - User asks "Am I eligible for …?", "Can I apply for …?", "Mera PMSBY
+          ke liye paatrata check karo", or similar.
+        - You already have (or the user just gave) age and other needed facts.
+        - After you collected missing fields from a previous need_more_info result.
+
+        WHEN NOT TO CALL:
+        - User only wants a general scheme explanation (use get_scheme_info instead).
+        - User only wants the document list (use get_document_checklist instead).
+        - You still have zero facts — first ask age (and bank-account status if
+          the scheme needs one), then call this tool.
+
+        FAILURE PATH (speak out loud, never invent eligibility):
+        - If the tool returns ok=false or status=need_more_info, read the
+          message / speak_summary to the user and ask only the missing fields.
+        - Never promise bank or government approval. Always say the data vintage
+          from data_as_of (e.g. "figures as of April 2025 local dataset").
+        """
+        try:
+            result = schemes.check_eligibility(
+                scheme_name=scheme_name,
+                age=age,
+                has_bank_account=has_bank_account,
+                is_indian_resident=is_indian_resident,
+                monthly_income_inr=monthly_income_inr,
+                already_has_scheme=already_has_scheme,
+            )
+            # Persist a light non-sensitive breadcrumb if we know the caller.
+            if self._known_caller_name and result.get("ok"):
+                try:
+                    db.save_caller(
+                        user_id=self._known_caller_name.lower().replace(" ", "_"),
+                        name=self._known_caller_name,
+                        language_preference=self._reply_lang,
+                        facts={
+                            "last_eligibility_scheme": result.get(
+                                "scheme_short_name", scheme_name
+                            ),
+                            "last_eligibility_status": result.get("status"),
+                        },
+                        consent_given=True,
+                    )
+                except Exception as err:
+                    logger.warning("Could not save eligibility breadcrumb: %s", err)
+            return json.dumps(result)
+        except Exception as err:
+            logger.exception("check_scheme_eligibility failed: %s", err)
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": "tool_failure",
+                    "message": (
+                        "The eligibility checker is temporarily unavailable. "
+                        "Apologise out loud, do NOT invent eligibility, and suggest "
+                        "the caller confirm at their bank branch, CSC, or the "
+                        "official scheme portal. You may still explain general "
+                        "scheme basics from your knowledge."
+                    ),
+                    "data_as_of": schemes.DATA_AS_OF,
+                    "data_source": schemes.DATA_SOURCE,
+                }
+            )
+
+    @function_tool
+    async def get_document_checklist(
+        self,
+        ctx: RunContext,
+        scheme_name: str,
+    ) -> str:
+        """Return the document checklist a caller should carry when applying for
+        PMJDY, PMSBY, PMJJBY, or APY.
+
+        WHEN TO CALL:
+        - User asks "What documents do I need for …?", "Kaun se documents lagenge?",
+          "Checklist for Jan Dhan", or similar application-prep questions.
+        - After an eligibility check succeeds and the user wants next steps.
+
+        WHEN NOT TO CALL:
+        - User is only asking about eligibility (use check_scheme_eligibility).
+        - User wants premium / cover numbers (use get_scheme_info).
+
+        FAILURE PATH (speak out loud):
+        - If ok=false, tell the user which schemes you support and ask them to
+          restate the scheme name. Never invent a document list.
+        - Always mention data_as_of so the listener knows the list vintage.
+          Banks may still ask for extra KYC — say that too.
+        """
+        try:
+            result = schemes.get_document_checklist(scheme_name)
+            return json.dumps(result)
+        except Exception as err:
+            logger.exception("get_document_checklist failed: %s", err)
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": "tool_failure",
+                    "message": (
+                        "The document checklist is temporarily unavailable. "
+                        "Apologise out loud, do NOT invent documents, and guide "
+                        "the caller to confirm the list at their bank branch or CSC."
+                    ),
+                    "data_as_of": schemes.DATA_AS_OF,
+                    "data_source": schemes.DATA_SOURCE,
+                }
+            )
+
+    @function_tool
+    async def get_scheme_info(
+        self,
+        ctx: RunContext,
+        scheme_name: str,
+    ) -> str:
+        """Fetch structured facts (summary, age band, premium, benefits) for
+        PMJDY, PMSBY, PMJJBY, or APY from the local scheme dataset.
+
+        WHEN TO CALL:
+        - User asks "Tell me about PMSBY", "APY kya hai?", premium/cover amounts,
+          or wants a quick scheme overview with dated figures.
+
+        WHEN NOT TO CALL:
+        - User already gave personal details and wants a personal eligibility
+          decision (use check_scheme_eligibility).
+        - User wants only the document list (use get_document_checklist).
+
+        Always speak the data_as_of vintage. On failure, apologise and do not invent numbers.
+        """
+        try:
+            result = schemes.get_scheme_overview(scheme_name)
+            return json.dumps(result)
+        except Exception as err:
+            logger.exception("get_scheme_info failed: %s", err)
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": "tool_failure",
+                    "message": (
+                        "Scheme info lookup failed. Apologise out loud, do NOT invent "
+                        "premiums or cover amounts, and suggest the official portal "
+                        "or bank branch for current figures."
+                    ),
+                    "data_as_of": schemes.DATA_AS_OF,
+                    "data_source": schemes.DATA_SOURCE,
+                }
+            )
+
+    def _auto_memory_for_turn(self, turn_ctx: llm.ChatContext, text: str) -> None:
         """Lookup/save memory from name phrases without waiting on the LLM tool call."""
         name = extract_caller_name(text)
         if not name:
@@ -465,23 +678,23 @@ class Assistant(Agent):
             (transcript or "")[:120],
         )
 
-        # Only refresh instructions / voice when language actually changes.
-        # Constant updates race the LLM/TTS and can stall or double-speak.
-        if reply_lang != self._reply_lang:
-            self._reply_lang = reply_lang
-            directive = REPLY_LANG_HI if reply_lang == "hi" else REPLY_LANG_EN
-            await self.update_instructions(SYSTEM_PROMPT + directive)
-            logger.info("Updated instructions for language=%s", reply_lang)
+        # Always update instructions/voice on every turn.
+        # This guarantees the agent switches language immediately when user asks in English
+        # (or any other language), even if previous detection was borderline or update race.
+        self._reply_lang = reply_lang
+        directive = REPLY_LANG_HI if reply_lang == "hi" else REPLY_LANG_EN
+        await self.update_instructions(SYSTEM_PROMPT + directive)
+        logger.info("Updated instructions for language=%s", reply_lang)
 
-            voice = VOICE_HI if reply_lang == "hi" else VOICE_EN
-            locale = LOCALE_HI if reply_lang == "hi" else LOCALE_EN
-            if voice != self._voice:
-                tts = self.session.tts if self.session else None
-                if tts is not None and hasattr(tts, "update_options"):
-                    # style=None = default Murf style (Conversation style caused beeps)
-                    tts.update_options(voice=voice, locale=locale, style=None)
-                    self._voice = voice
-                    logger.info("Switched TTS voice=%s locale=%s", voice, locale)
+        voice = VOICE_HI if reply_lang == "hi" else VOICE_EN
+        locale = LOCALE_HI if reply_lang == "hi" else LOCALE_EN
+        tts = self.session.tts if self.session else None
+        if voice != self._voice:
+            if tts is not None and hasattr(tts, "update_options"):
+                # style=None = default Murf style (Conversation style caused beeps)
+                tts.update_options(voice=voice, locale=locale, style=None)
+                self._voice = voice
+                logger.info("Switched TTS voice=%s locale=%s", voice, locale)
 
         return reply_lang
 
@@ -493,7 +706,8 @@ class Assistant(Agent):
         text_clean = text.strip().lower()
         words = re.findall(r"[a-zA-Z\u0900-\u097F']+", text_clean)
 
-        # Drop empty / filler / ultra-short STT hallucinations (often echo fragments).
+        # Drop empty / filler / ultra-short STT hallucinations.
+        # Allow short yes/no/haan/nahi etc. so "Yes." and "Hello?" are not ignored.
         noise = {
             "[music]",
             "[applause]",
@@ -510,13 +724,16 @@ class Assistant(Agent):
             "ah",
             "oh",
         }
-        if (
-            not text_clean
-            or text_clean in noise
-            or len(words) < 2
-            or len(text_clean) < 6
-        ):
+        # Normalize for punctuation so "yes.", "hello?", "haan." work
+        text_norm = re.sub(r'[^\w\s]', '', text_clean).lower().strip()
+        is_short_greet = text_norm in _ALLOWED_SHORT_GREETS or any(
+            text_norm == g or text_norm.startswith(g + " ") for g in _ALLOWED_SHORT_GREETS
+        )
+        if not text_clean or text_clean in noise:
             logger.info("Ignoring noise/echo transcript: %r", text)
+            raise StopResponse()
+        if not is_short_greet and (len(words) < 2 or len(text_clean) < 6):
+            logger.info("Ignoring ultra-short non-greet transcript: %r", text)
             raise StopResponse()
 
         reply_lang = await self.apply_language(text, self._last_stt_language)
@@ -524,7 +741,7 @@ class Assistant(Agent):
         # Cross-call memory: auto lookup/save when user shares a name.
         try:
             self._auto_memory_for_turn(turn_ctx, text)
-        except Exception as err:  # noqa: BLE001 - never block the reply path
+        except Exception as err:
             logger.warning("Auto memory hook failed: %s", err)
 
         # Keep at most ONE ephemeral language lock in context (replace, never stack).
@@ -658,16 +875,18 @@ async def my_agent(ctx: JobContext):
                     facts={"last_room": ctx.room.name},
                     consent_given=True,
                 )
-            except Exception as err:  # noqa: BLE001
+            except Exception as err:
                 logger.warning("Failed to persist session breadcrumb: %s", err)
         logger.info("Session finished cleanly for room: %s", ctx.room.name)
 
     ctx.add_shutdown_callback(cleanup)
 
-    # No spoken intro — jump straight to listening so the call feels instant.
+    # Short spoken intro so the caller knows the agent is live (empty greeting
+    # made calls feel dead / "not replying when call starts").
     if FIRST_GREETING.strip():
         try:
             await session.say(FIRST_GREETING, allow_interruptions=True)
+            logger.info("Played initial greeting")
         except Exception as err:
             logger.error("Error playing initial greeting: %s", err)
     else:
