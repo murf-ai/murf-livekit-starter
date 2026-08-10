@@ -9,6 +9,7 @@ import {
   ShoppingBagIcon,
   TruckIcon,
 } from 'lucide-react';
+import { CatalogueCards } from '@/components/app/catalogue-cards';
 import { Button } from '@/components/ui/button';
 
 function MitraMark() {
@@ -50,12 +51,12 @@ export const WelcomeView = ({
           </p>
           <div className="mx-auto mt-6 max-w-xl space-y-3 text-left lg:mx-0">
             <p className="rounded-2xl rounded-bl-md bg-stone-200 px-4 py-3 text-sm text-stone-800 sm:text-base dark:bg-stone-800 dark:text-stone-100">
-              <span className="font-bold">You:</span> “Mere paas ₹500 ke andar achhe running
-              shoes hain?”
+              <span className="font-bold">You:</span> “Mere paas ₹500 ke andar achhe running shoes
+              hain?”
             </p>
             <p className="ml-6 rounded-2xl rounded-br-md bg-orange-600 px-4 py-3 text-sm text-white sm:text-base">
-              <span className="font-bold">Mitra:</span> “Haan! 3 nearby stores mein options
-              mile hain.”
+              <span className="font-bold">Mitra:</span> “Haan! 3 nearby stores mein options mile
+              hain.”
             </p>
           </div>
         </div>
@@ -63,12 +64,8 @@ export const WelcomeView = ({
         <div className="w-full max-w-md rounded-[2rem] border border-orange-200/70 bg-white/85 p-5 shadow-xl shadow-orange-900/5 backdrop-blur dark:border-orange-900 dark:bg-stone-900/85">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <p className="text-lg font-bold text-stone-900 dark:text-stone-100">
-                Nearby stores
-              </p>
-              <p className="text-sm text-stone-500 dark:text-stone-400">
-                Local options around you
-              </p>
+              <p className="text-lg font-bold text-stone-900 dark:text-stone-100">Nearby stores</p>
+              <p className="text-sm text-stone-500 dark:text-stone-400">Local options around you</p>
             </div>
             <span className="grid size-10 place-items-center rounded-full bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300">
               <NavigationIcon className="size-5" />
@@ -132,6 +129,7 @@ export const WelcomeView = ({
           </p>
         </div>
       </section>
+      <CatalogueCards />
     </div>
   );
 };

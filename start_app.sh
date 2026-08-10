@@ -8,6 +8,7 @@ else
 fi
 
 (cd backend && uv run python src/agent.py dev) &
+(cd backend && uv run python src/catalogue_api.py) &
 (cd frontend && pnpm dev) &
 
 # Wait for all background jobs

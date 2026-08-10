@@ -1,277 +1,265 @@
-# Voice Agent Starter — Powered by Murf Falcon
+# Mitra — Local Commerce Voice Assistant
 
-Build a production voice AI agent in 5 minutes. Powered by the fastest TTS on the market - swap the system prompt to build anything from customer support to language tutors.
+Mitra is a multilingual voice assistant for Indian local commerce. It helps customers discover products from artisans, MSMEs, neighbourhood shops, and street vendors, prepare pickup or delivery order requests, and retrieve sourced guidance. It also gives shopkeepers simple voice tools for inventory checks and khata entries.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Murf Falcon](https://img.shields.io/badge/TTS-Murf%20Falcon-6366F1)](https://murf.ai/api/docs/text-to-speech/streaming) [![LiveKit](https://img.shields.io/badge/Transport-LiveKit-002cf2)](https://docs.livekit.io) [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+The application combines a Python LiveKit voice agent with a Next.js web interface and Murf Falcon speech synthesis.
 
----
+## What Mitra can do
 
-## Why Murf Falcon
+- Search a local product catalogue by product, category, seller, or item ID
+- Explain listed prices and availability without presenting them as seller-confirmed
+- Collect and read back order details before recording an order request
+- Support pickup and delivery requests
+- Check shop inventory and record khata credit entries
+- Answer supported scheme and farming questions from local, source-labelled documents
+- Recognize common Hindi, English, and Romanized Hindi shopping terms
+- Respond in the caller's language, including conversational Hinglish
+- Remember returning callers only after explicit consent
+- Delete a caller's saved memory on request
+- Escalate disputes and seller-controlled decisions without requesting sensitive financial data
 
-- **55ms model latency** - fastest production TTS
-- **130ms time-to-first-audio** across 10+ global regions
-- **$0.01/1000 characters** - up to 10x cheaper than alternatives
-- **150+ voices** across 35+ languages
-- **99.38% pronunciation accuracy**
-
----
-
-## Architecture
+## Voice pipeline
 
 ```mermaid
 flowchart LR
-    A[🎙️ User speaks] -->|audio| B[Deepgram STT]
-    B -->|text| C[LLM]
-    C -->|response text| D[Murf Falcon TTS]
-    D -->|audio| E[LiveKit]
-    E -->|stream| F[🔊 User hears]
-
-    style A fill:#444441,stroke:#888780,color:#fff
-    style B fill:#185FA5,stroke:#85B7EB,color:#fff
-    style C fill:#534AB7,stroke:#AFA9EC,color:#fff
-    style D fill:#0F6E56,stroke:#5DCAA5,color:#fff
-    style E fill:#D85A30,stroke:#F0997B,color:#fff
-    style F fill:#444441,stroke:#888780,color:#fff
+    User[Caller] -->|speech| STT[Deepgram Nova-3\nMultilingual STT]
+    STT --> LLM[Google Gemini]
+    LLM --> Tools[Catalogue, orders, inventory,\nkhata, memory, knowledge base]
+    Tools --> LLM
+    LLM --> TTS[Murf Falcon 2\nAbhinav voice]
+    TTS -->|audio via LiveKit| User
 ```
 
----
+The backend also uses Silero VAD, LiveKit's multilingual turn detector, and LiveKit noise cancellation.
 
-## Quickstart
+## Tech stack
 
-### Prerequisites
+| Area | Technology |
+| --- | --- |
+| Voice agent | Python 3.10+, LiveKit Agents 1.4 |
+| Speech-to-text | Deepgram Nova-3 (`multi`) |
+| Language model | Google Gemini 3.5 Flash Lite |
+| Text-to-speech | Murf Falcon 2, `Abhinav` voice |
+| Turn detection | Silero VAD + LiveKit Multilingual Turn Detector |
+| Caller memory | SQLite |
+| Knowledge retrieval | Local Markdown document retriever |
+| Web app | Next.js 15, React 19, TypeScript, Tailwind CSS 4 |
+| Package managers | `uv` and `pnpm` |
 
-- **Python** 3.10+
-- **[uv](https://docs.astral.sh/uv/)** - fast Python package manager
-  ```bash
-  # macOS/Linux
-  curl -LsSf https://astral.sh/uv/install.sh | sh
-  # Windows (PowerShell)
-  powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-  ```
-- **Node.js** 18+
-- **pnpm** — fast Node package manager
-  ```bash
-  npm install -g pnpm
-  ```
-- A [LiveKit](https://cloud.livekit.io/) project (free tier available)
+## Prerequisites
 
-### Step 1: Clone the repo
+- Python 3.10–3.14
+- [uv](https://docs.astral.sh/uv/)
+- Node.js 20+
+- [pnpm](https://pnpm.io/) 9+
+- A [LiveKit Cloud](https://cloud.livekit.io/) project, or a local `livekit-server`
+- API keys for [Murf](https://murf.ai/api/dashboard), [Deepgram](https://deepgram.com/), and [Google AI Studio](https://aistudio.google.com/apikey)
 
-```bash
-git clone https://github.com/murf-ai/murf-livekit-starter.git
-cd murf-livekit-starter
-```
+## Local setup
 
-### Step 2: Set up environment variables
-
-Create `.env.local` in both `backend/` and `frontend/` (copy from `.env.example` in each). You need:
-
-| Variable                               | Where to get it                                        | Required |
-| -------------------------------------- | ------------------------------------------------------ | -------- |
-| `LIVEKIT_URL`                          | LiveKit Cloud dashboard                                | Yes      |
-| `LIVEKIT_API_KEY`                      | LiveKit Cloud dashboard                                | Yes      |
-| `LIVEKIT_API_SECRET`                   | LiveKit Cloud dashboard                                | Yes      |
-| `MURF_API_KEY`                         | [murf.ai/api/dashboard](https://murf.ai/api/dashboard) | Yes      |
-| `DEEPGRAM_API_KEY`                     | [deepgram.com](https://deepgram.com)                   | Yes      |
-| `GOOGLE_API_KEY` (or `OPENAI_API_KEY`) | Depends on LLM choice                                  | Yes      |
-
-### Step 3: Install backend dependencies
+### 1. Install dependencies
 
 ```bash
 cd backend
 uv sync
 uv run python src/agent.py download-files
-```
 
-### Step 4: Install frontend dependencies
-
-```bash
-cd frontend
+cd ../frontend
 pnpm install
 ```
 
-### Step 5: Run it
+The `download-files` command downloads the VAD and turn-detection model assets required by LiveKit Agents.
 
-**Option A - All-in-one (from repo root):**
+### 2. Configure the environment
+
+Create local environment files from the included templates:
+
+```bash
+# macOS/Linux
+cp backend/.env.example backend/.env.local
+cp frontend/.env.example frontend/.env.local
+```
+
+```powershell
+# Windows PowerShell
+Copy-Item backend/.env.example backend/.env.local
+Copy-Item frontend/.env.example frontend/.env.local
+```
+
+Backend variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `LIVEKIT_URL` | LiveKit WebSocket URL |
+| `LIVEKIT_API_KEY` | LiveKit API key |
+| `LIVEKIT_API_SECRET` | LiveKit API secret |
+| `MURF_API_KEY` | Murf Falcon TTS access |
+| `DEEPGRAM_API_KEY` | Deepgram STT access |
+| `GOOGLE_API_KEY` | Gemini access |
+| `CALLER_MEMORY_DB` | Optional custom path for the caller-memory SQLite database |
+| `CATALOGUE_API_URL` | Catalogue endpoint; defaults to `http://127.0.0.1:8001/catalogue` |
+
+The frontend needs the same `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET`. Set `AGENT_NAME=my-agent` for explicit dispatch; leaving it empty uses automatic dispatch.
+
+Never commit `.env.local` files or real credentials.
+
+### 3. Start the application
+
+From the repository root:
 
 ```bash
 # macOS/Linux
 chmod +x start_app.sh
 ./start_app.sh
+```
 
-# Windows (PowerShell)
+```powershell
+# Windows PowerShell
 .\start_app.ps1
 ```
 
-**Option B - Separate terminals:**
+The scripts start the catalogue API, backend, and frontend. They also start a local LiveKit server when `livekit-server` is installed; otherwise, they use the cloud instance configured by `LIVEKIT_URL`.
+
+Open [http://localhost:3000](http://localhost:3000), select **Talk to Mitra**, allow microphone access, and begin speaking.
+
+### Run services separately
 
 ```bash
-# Terminal 1 — LiveKit Server
+# Terminal 1 — optional when using LiveKit Cloud
 livekit-server --dev
 
-# Terminal 2 — Backend agent
-cd backend && uv run python src/agent.py dev
+# Terminal 2 — voice agent
+cd backend
+uv run python src/agent.py dev
 
-# Terminal 3 — Frontend
-cd frontend && pnpm dev
+# Terminal 3 — catalogue API
+cd backend
+uv run python src/catalogue_api.py
+
+# Terminal 4 — web interface
+cd frontend
+pnpm dev
 ```
 
-Then open **http://localhost:3000** in your browser.
+For terminal-only agent testing, run:
 
-You should now see the voice agent UI. Click **Start talking**, allow microphone access, and speak — the agent will respond with Murf Falcon TTS. Ensure your backend and (if using Option B) LiveKit server are running.
-
----
-
-## Deploy
-
-Want to deploy this beyond localhost? You'll need to deploy **two services**: the backend agent and the frontend. Both must use the same LiveKit project.
-
-> This is a two-service app — the backend agent and the frontend UI deploy separately. You'll need both running and connected to the same LiveKit project.
-
-### Backend (Python agent) — Deploy to Railway
-
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/tIVCF1?referralCode=cNjn2P&utm_medium=integration&utm_source=template&utm_campaign=generic)
-
-Set these environment variables in Railway:
-
-- `MURF_API_KEY`
-- `DEEPGRAM_API_KEY`
-- `GOOGLE_API_KEY` or `OPENAI_API_KEY`
-- `LIVEKIT_URL`
-- `LIVEKIT_API_KEY`
-- `LIVEKIT_API_SECRET`
-
-The backend runs as a long-lived Python process that connects to LiveKit as an agent. Railway handles this well.
-
-### Frontend (Next.js) — Deploy to Vercel
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/murf-ai/murf-livekit-starter&root-directory=frontend&env=LIVEKIT_URL,LIVEKIT_API_KEY,LIVEKIT_API_SECRET&project-name=murf-voice-agent&repository-name=murf-voice-agent)
-
-Set these environment variables in Vercel:
-
-- `LIVEKIT_URL`
-- `LIVEKIT_API_KEY`
-- `LIVEKIT_API_SECRET`
-- `AGENT_NAME` (optional — for explicit agent dispatch)
-
-The frontend is a standard Next.js app. Point it at the same LiveKit instance your backend agent is connected to.
-
-### Connecting them
-
-The frontend and backend don't call each other directly — they both connect to **LiveKit**, which handles the real-time audio transport.
-
-1. Use the **same** `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` on both Railway and Vercel
-2. Set `AGENT_NAME=my-agent` on Vercel — this matches the `agent_name="my-agent"` registered in `backend/src/agent.py`
-3. Verify: Railway logs should show the agent connected to LiveKit. Open your Vercel URL, click **Start talking** — the agent should respond
-
-If the agent doesn't connect, double-check that both services point to the same LiveKit project and that the backend is running (check Railway logs).
-
----
-
-## Change the Use Case
-
-The default system prompt makes this a **customer support agent**. You can change the agent’s behavior by editing the prompt.
-
-**Where the prompt lives:** `backend/src/agent.py`- the `SYSTEM_PROMPT` constant (near the top of the file, after the imports). Change that string to change what your voice agent does.
-
-### Example prompts (copy-paste)
-
-**Customer Support (default):**
-
-```
-You are a friendly and efficient customer support agent for a tech company. Help users with account issues, billing questions, and product troubleshooting. Be concise, empathetic, and solution-oriented. If you don't know something, say so honestly and offer to escalate.
+```bash
+cd backend
+uv run python src/agent.py console
 ```
 
-**Language Tutor:**
+## Built-in tools and data
 
+The tools are defined on the `Assistant` class in `backend/src/agent.py`:
+
+| Tool | Purpose |
+| --- | --- |
+| `search_catalogue` | Finds matching products and returns listed prices, sellers, and stock |
+| `create_order` | Records a confirmed pickup or delivery order request |
+| `check_inventory` | Looks up shop inventory |
+| `add_credit_entry` | Adds a customer credit entry to the session's khata register |
+| `search_knowledge_base` | Retrieves source-labelled local knowledge passages |
+| `lookup_caller` | Loads consented caller memory by LiveKit participant identity |
+| `save_caller_memory` | Saves approved caller details and preferences |
+| `forget_caller` | Deletes the current caller's saved record |
+
+The sample catalogue lives in `backend/src/catalogue.json`, while the separate shop inventory example lives in `backend/src/agent.py`. Knowledge documents live in `backend/knowledge/`; each Markdown file begins with `title` and `source` metadata.
+
+## Local Commerce Tools
+
+### Catalogue Lookup
+
+`search_catalogue` is called for product, price, stock, availability, category, and budget questions. It fetches data from the separate local catalogue API, supports product-name and category searches plus an optional maximum-price filter, and reports the product name, seller, listed INR price, unit or pack size, stock quantity, availability, and update timestamp.
+
+### Order Total
+
+`calculate_order_total` accepts matching lists of product IDs and quantities. It verifies that every product exists, each quantity is positive, and sufficient stock is listed. It then computes each line-item subtotal and the final INR total from catalogue prices and includes the data timestamp. The LLM is instructed to call this tool instead of calculating totals itself.
+
+### Data Source
+
+The prototype uses a hand-built local catalogue dataset because a production inventory API/database is not currently connected. The separate HTTP service in `backend/src/catalogue_api.py` serves the dataset from `backend/src/catalogue.json`. The agent accesses it through `CATALOGUE_API_URL` (default `http://127.0.0.1:8001/catalogue`). It is a timestamped snapshot, not live inventory.
+
+### Failure Handling
+
+Missing or invalid data, HTTP failures, timeouts, empty results, invalid products or quantities, and insufficient stock all return explicit, speech-friendly messages. If the API is stopped or unavailable, Mitra tells the caller that current prices and stock cannot be confirmed instead of guessing. The catalogue API can be stopped independently while the voice agent and frontend continue running.
+
+To stop it, press `Ctrl+C` in its terminal. Start it again with `cd backend` followed by `uv run python src/catalogue_api.py`.
+
+### Persistence notes
+
+- Caller memory is persisted in `backend/data/callers.sqlite3` by default.
+- `CALLER_MEMORY_DB` can point to another SQLite file.
+- Orders and khata entries currently live in the agent instance's memory. They are demonstration records and are not persisted across restarts.
+- Catalogue stock is sample data and is not reduced when an order request is recorded.
+- Mitra records order requests only; payment and final seller confirmation happen outside this application.
+
+## Testing and code quality
+
+Backend tests include deterministic unit tests and LLM-judged conversation evaluations.
+
+```bash
+cd backend
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
 ```
-You are a patient and encouraging language tutor helping the user practice conversational Spanish. Speak primarily in Spanish but switch to English to explain grammar or vocabulary when needed. Correct mistakes gently and suggest better phrasing. Keep conversations natural and fun.
+
+The conversation evaluations require the relevant LiveKit inference credentials. To format backend code, use `uv run ruff format .`.
+
+Frontend checks:
+
+```bash
+cd frontend
+pnpm lint
+pnpm format:check
+pnpm build
 ```
 
-**AI Receptionist:**
+## Customization
 
-```
-You are a professional receptionist for a medical clinic. Help callers schedule appointments, answer questions about office hours and services, and take messages for doctors. Be warm but efficient. Ask for the caller's name and reason for calling upfront.
-```
+- Agent identity, behaviour, safety rules, and LiveKit tools: `backend/src/agent.py`
+- Prototype product data: `backend/src/catalogue.json`
+- Catalogue loading, search, validation, and totals: `backend/src/catalogue.py`
+- Caller-memory implementation: `backend/src/memory.py`
+- Knowledge retrieval: `backend/src/knowledge.py`
+- Knowledge documents: `backend/knowledge/`
+- Branding, colors, visualizer, and start button: `frontend/app-config.ts`
+- Main web page: `frontend/app/page.tsx`
 
-See the Configuration section below for voice, STT, and LLM options.
+When changing the system prompt or adding a tool, add or update tests in `backend/tests/test_agent.py` first.
 
----
+## Project structure
 
-## Configuration
-
-### Murf voice
-
-Edit the `tts=murf.TTS(...)` call in `backend/src/agent.py`. Set the `voice` argument to any Murf voice ID. Examples:
-
-- `Anisha` — Indian English (female, default in this starter)
-- `Pooja` — Indian English (female)
-- `Samar` — Indian English (male)
-- `Amara` — US English (female)
-- `Gordon` — US English (male)
-- `Hazel` — UK English (female)
-- `Bertie` — UK English (male)
-
-Browse all voices: [Murf Voice Library](https://murf.ai/api/docs/voices-styles/voice-library).
-
-### STT provider
-
-STT is configured in `backend/src/agent.py` in the `AgentSession(stt=...)` call. The default is Deepgram (`deepgram.STT(model="nova-3")`). You can swap to another LiveKit-compatible STT plugin if needed.
-
-### LLM (Gemini vs OpenAI)
-
-- **Gemini (default):** Set `GOOGLE_API_KEY` and use `llm=google.LLM(model="gemini-3.5-flash-lite")` in `agent.py`.
-- **OpenAI:** Set `OPENAI_API_KEY`, add the OpenAI plugin, and use the corresponding `llm=openai.LLM(...)` in `agent.py`.
-
-### Audio format
-
-Murf Falcon and LiveKit handle audio format internally. For advanced options, see [Murf API docs](https://murf.ai/api/docs) and [LiveKit docs](https://docs.livekit.io).
-
----
-
-## Project Structure
-
-```
+```text
 murf-livekit-starter/
-├── backend/                 # Python voice agent (LiveKit Agents + Murf Falcon)
+├── backend/
+│   ├── knowledge/              # Source-labelled local reference documents
 │   ├── src/
-│   │   └── agent.py         # Agent entrypoint, pipeline (STT/LLM/TTS), system prompt
-│   ├── tests/               # Agent tests
-│   ├── .env.example         # Backend env template
-│   ├── pyproject.toml       # Python deps (uv)
-│   └── railway.toml         # Railway deploy config
-├── frontend/                # Next.js UI for voice sessions
-│   ├── app/
-│   │   ├── page.tsx         # Main page
-│   │   └── api/token/       # LiveKit token endpoint (dev)
-│   ├── components/          # UI (agents-ui, app config, theme)
-│   ├── app-config.ts        # Branding, title, button text, accent
-│   ├── .env.example         # Frontend env template
-│   └── package.json         # Node deps (pnpm)
-├── start_app.sh             # Start LiveKit + backend + frontend (macOS/Linux)
-├── start_app.ps1            # Start LiveKit + backend + frontend (Windows)
-├── README.md                # This file
+│   │   ├── agent.py            # Voice pipeline, prompt, and LiveKit tools
+│   │   ├── catalogue.json      # Timestamped prototype product catalogue
+│   │   ├── catalogue.py        # Catalogue search and order calculations
+│   │   ├── catalogue_api.py    # Independently managed local HTTP API
+│   │   ├── knowledge.py        # Local knowledge retriever
+│   │   └── memory.py           # Consent-gated SQLite caller memory
+│   ├── tests/test_agent.py     # Unit and LLM-judged evaluations
+│   ├── .env.example
+│   └── pyproject.toml
+├── frontend/
+│   ├── app/                    # Next.js pages and token API
+│   ├── components/             # Application and LiveKit UI components
+│   ├── app-config.ts           # Mitra branding and feature configuration
+│   ├── .env.example
+│   └── package.json
+├── start_app.ps1               # Windows launcher
+├── start_app.sh                # macOS/Linux launcher
+└── README.md
 ```
 
-For deeper documentation on each part, see:
+## Deployment
 
-- [Backend Documentation](./backend/README.md) — agent pipeline, voice/LLM/STT configuration, testing, deployment
-- [Frontend Documentation](./frontend/README.md) — UI customization, visualizers, theming, component architecture
+Deploy the backend as a long-running Python worker and the frontend as a Next.js application. Both services must use the same LiveKit project credentials. In the deployed frontend, set `AGENT_NAME=my-agent` so sessions are dispatched to the agent registered in `backend/src/agent.py`.
 
----
-
-## Links
-
-- [Murf API Docs](https://murf.ai/api/docs)
-- [Murf Voice Library](https://murf.ai/api/docs/voices-styles/voice-library)
-- [LiveKit Docs](https://docs.livekit.io)
-- [Deepgram Docs](https://developers.deepgram.com)
-- [Murf Falcon Benchmarks](https://murf.ai/falcon/benchmarks)
-- [TTS Latency Benchmarker](https://github.com/sahilsgupta/tts-latency-benchmarker) — run your own p50/p95 tests across providers
-- [Murf Discord](https://discord.gg/FbKAy96Sz7)
-- [Murf Startup Incubator](https://murf.ai/api) — 50M free characters for startups
-
----
+For production use, replace the sample catalogue, inventory, order, and khata implementations with authenticated persistent services. Store the SQLite database on a persistent volume or migrate caller memory to a managed database.
 
 ## License
 

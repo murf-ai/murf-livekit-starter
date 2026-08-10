@@ -1,0 +1,14 @@
+{
+  "updated_at": "2026-08-10T09:30:00+05:30",
+  "products": [
+    {"product_id": "DAI-101", "name": "Amul Taaza Milk", "seller": "Sharma General Store", "location": "Lajpat Nagar, Delhi", "category": "dairy", "price_inr": 68, "stock_quantity": 14, "unit": "1 litre pouch"},
+    {"product_id": "DAI-102", "name": "Fresh Paneer", "seller": "Sharma General Store", "location": "Lajpat Nagar, Delhi", "category": "dairy", "price_inr": 95, "stock_quantity": 0, "unit": "200 gram pack"},
+    {"product_id": "BAK-201", "name": "Britannia Brown Bread", "seller": "Sharma General Store", "location": "Lajpat Nagar, Delhi", "category": "bakery", "price_inr": 45, "stock_quantity": 11, "unit": "400 gram loaf"},
+    {"product_id": "ART-101", "name": "Hand-painted Terracotta Diya Set", "seller": "Maya Crafts", "location": "Khurja, Uttar Pradesh", "category": "handicrafts", "price_inr": 320, "stock_quantity": 12, "unit": "set of 6"},
+    {"product_id": "TXT-204", "name": "Handloom Cotton Stole", "seller": "Sakhi Weaves", "location": "Varanasi, Uttar Pradesh", "category": "textiles", "price_inr": 850, "stock_quantity": 7, "unit": "1 piece"},
+    {"product_id": "FOD-310", "name": "Homemade Mango Pickle", "seller": "Asha Foods", "location": "Jaipur, Rajasthan", "category": "food", "price_inr": 240, "stock_quantity": 18, "unit": "500 gram jar"},
+    {"product_id": "FOD-315", "name": "Fresh Millet Rotis", "seller": "Shanti Tiffins", "location": "Gurugram, Haryana", "category": "food", "price_inr": 120, "stock_quantity": 10, "unit": "pack of 6"},
+    {"product_id": "HOM-408", "name": "Natural Coir Doormat", "seller": "Coastal Works", "location": "Alappuzha, Kerala", "category": "home", "price_inr": 450, "stock_quantity": 5, "unit": "1 piece"},
+    {"product_id": "ELC-512", "name": "Portable Bluetooth speaker", "seller": "Nagar Electronics", "location": "Nehru Place, Delhi", "category": "electronics audio", "price_inr": 899, "stock_quantity": 9, "unit": "1 piece"}
+  ]
+}

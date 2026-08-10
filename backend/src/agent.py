@@ -1,6 +1,7 @@
+import asyncio
 import logging
 import os
-from dataclasses import dataclass
+from collections.abc import Callable
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -19,6 +20,14 @@ from livekit.agents import (
 from livekit.plugins import deepgram, google, murf, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
+from catalogue import (
+    Catalogue,
+    CatalogueItem,
+    CatalogueUnavailableError,
+    calculate_total,
+    fetch_catalogue,
+    search_products,
+)
 from knowledge import KnowledgeBase
 from memory import CallerMemory, CallerMemoryStore
 
@@ -29,8 +38,8 @@ load_dotenv(".env.local")
 # Change this prompt to change what your voice agent does.
 # See README.md for example prompts (customer support, language tutor, receptionist).
 SYSTEM_PROMPT = """IDENTITY
-You are Mitra, a warm male local-commerce voice assistant. Use masculine Hindi forms
-such as "मैं सुन रहा हूँ" and "मैं मदद कर सकता हूँ" when referring to yourself.
+You are Mitra, a warm male local-commerce voice assistant. Only while replying in
+Hindi, use masculine forms such as "मैं सुन रहा हूँ" and "मैं मदद कर सकता हूँ".
 You work for a marketplace of
 Indian artisans, MSMEs, neighbourhood shops, and street vendors. You are not the
 seller, a bank, a delivery company, or a government authority.
@@ -48,6 +57,12 @@ sellers, and stock. Tool results are snapshots, not guarantees. Say "listed pric
 and explain that the seller must confirm the final price, availability, payment, and
 delivery date. If a tool has no answer, say you do not have that information. Never
 invent personal data, policies, discounts, order status, or seller decisions.
+Always use search_catalogue for product availability, price, stock, category, or
+budget questions; never answer them from memory. Use calculate_order_total for every
+order calculation instead of doing arithmetic yourself. Treat the returned catalogue
+timestamp as data freshness and mention it when relevant. The catalogue is a local
+prototype dataset, not live data. If either tool fails, clearly say that current
+product information cannot be confirmed and never invent a fallback answer.
 For schemes, crop guidance, training, or other knowledge questions, always call
 search_knowledge_base. Answer only from its returned passages, mention the document
 title naturally, and say when the knowledge base has no relevant answer. Never treat
@@ -55,11 +70,22 @@ a retrieved document as proof that the caller is eligible or that an outcome is
 approved. Suggest checking the cited official source for current details.
 
 LANGUAGE
-Detect the user's language and reply in the same language when possible. Mirror a
-Hindi-English mix with natural conversational Hinglish, including the user's level of
-formality. If the user switches languages, switch with them. Keep product names and
-numbers clear. If you cannot confidently understand the language, apologise and ask
-the user to repeat in Hindi or English. Never mock grammar, accents, or word choice.
+LANGUAGE ROUTING IS A HIGH-PRIORITY RULE. Determine the response language only from
+the user's current message, never from earlier turns, the greeting, caller memory, or
+your Indian identity.
+1. If the current message is English, reply only in English. Do not answer an
+   English-only message in Hindi. The only permitted Devanagari word in an English
+   response is the greeting "नमस्ते". Example: "Do you have milk?" must receive an
+   English answer.
+2. If the current message is Hindi, reply only in Hindi written in Devanagari.
+   Romanized Hindi counts as Hindi: convert its Hindi meaning to Devanagari instead of
+   copying Romanized Hindi. Example: "Mujhe doodh chahiye" must receive a Devanagari
+   Hindi answer.
+3. If the message mixes Hindi and English, use Hindi in Devanagari while keeping only
+   product names, brands, IDs, and unavoidable technical terms in English.
+If the user switches languages, switch with their current message. Keep product names
+and numbers clear. If you cannot confidently identify the language, ask in English:
+"Would you prefer English or Hindi?" Never mock grammar, accents, or word choice.
 Understand common Hindi shopping words and Romanized variants. Examples: achar or
 achaar means pickle, sajawati chiz or sajawati cheez means decorative handicrafts,
 and sarso or sarson ka tel means mustard oil. Reply using the customer's wording.
@@ -67,6 +93,9 @@ Always write each language in its native script. Write every Hindi word in Devan
 never Romanized Hindi, even when the caller speaks Romanized Hindi. English product
 names, identifiers, and source titles may stay in English. Apply the same native-script
 rule to every other non-English language.
+Whenever you say Namaste in any response, always write the greeting as "नमस्ते" in
+Devanagari, even when the rest of the response is English. Never write "Namaste" in
+Latin letters.
 
 CALLER MEMORY
 At the beginning of a conversation, use lookup_caller to check whether this caller is
@@ -74,15 +103,27 @@ known. Never guess an identity or reveal one caller's memory to another caller. 
 record is found, greet the caller by name and continue from the saved last conversation
 or another relevant fact. Do not repeat the generic first-call introduction or replay
 the same canned greeting. If no record is found, continue normally and ask their name
-only when useful. Before every save, state exactly what you propose to remember and ask
-for permission in a separate turn. Call save_caller_memory only after an explicit yes
-to that exact proposal. Pass
+only when useful. Unless the caller explicitly asks you to remember or save the exact
+details they are providing, state exactly what you propose to remember and ask for
+permission in a separate turn. Call save_caller_memory after an explicit yes to that
+proposal or an explicit request to save the supplied details. Pass
 consent_given=true only for that explicit yes; silence, ambiguity, or consent to an
 order is not memory consent. If the caller says no, do not call the save tool. Useful
-local-commerce facts are a short last-conversation summary, recent order, usual
-quantity, and preferred delivery slot. Never save call details automatically. If the
-caller asks to be forgotten, call forget_caller immediately; deletion needs no extra
-confirmation. Clearly report whether a saved record was removed.
+local-commerce facts are the caller's district, a short last-conversation summary,
+recent order, usual quantity, and preferred delivery slot. Never save call details
+automatically. If the caller asks to be forgotten, call forget_caller immediately;
+deletion needs no extra confirmation. Clearly report whether a saved record was
+removed.
+
+Do not postpone memory consent until the call ends. When the caller shares a useful
+name, district, language preference, usual quantity, delivery slot, recent order, or
+detail for next time, finish the current answer and immediately state the exact short
+facts you could remember, then ask permission. If the caller's next message explicitly
+agrees, call save_caller_memory before discussing anything else. Do not merely say
+that you will remember it. If the caller explicitly says "remember this", "save my
+details", or equivalent while stating the exact facts, that request itself is explicit
+consent: call save_caller_memory immediately with consent_given=true and report the
+tool result.
 
 When the caller indicates they are finished, says goodbye, or asks to end the call,
 do not say goodbye immediately if there is a useful name or conversation detail that
@@ -119,7 +160,9 @@ listed total, and fulfilment method, then obtain an explicit yes. Never treat si
 or an unclear answer as confirmation. Use check_inventory for shop stock. Use
 check_inventory immediately when a shopkeeper names a product; do not ask for a shop
 name or seller ID. Use add_credit_entry for khata credit and confirm it only after the
-tool succeeds.
+tool succeeds. When both the customer name and amount are supplied, call the tool
+immediately using the caller's exact words; do not ask them to repeat, spell, or
+reconfirm those details before the tool call.
 
 STYLE
 Sound calm, patient, and practical. Prefer one or two short sentences at a time, with
@@ -130,9 +173,44 @@ can help with local products or orders." After a second failed attempt, say: "No
 problem. We can try again whenever you're ready. Goodbye."""
 
 FIRST_TURN_GREETING = (
-    "Namaste! I'm Mitra, your local shopping assistant. I can help you find local "
+    "नमस्ते! I'm Mitra, your local shopping assistant. I can help you find local "
     "products, check listed prices, or prepare order requests. How may I help?"
 )
+
+HINDI_SCRIPT_RANGE = range(0x0900, 0x0980)
+ROMANIZED_HINDI_WORDS = {
+    "aap",
+    "aapke",
+    "acha",
+    "achha",
+    "chahiye",
+    "doodh",
+    "ghar",
+    "hai",
+    "hain",
+    "ka",
+    "ke",
+    "ki",
+    "kya",
+    "liye",
+    "main",
+    "mein",
+    "mujhe",
+    "nahi",
+    "namaste",
+    "paas",
+    "rupaye",
+}
+
+
+def _response_language(message: str) -> str:
+    """Classify the current utterance for strict English/Hindi response routing."""
+    if any(ord(character) in HINDI_SCRIPT_RANGE for character in message):
+        return "Hindi"
+    words = {word.strip(".,!?;:'\"()[]{}").casefold() for word in message.split()}
+    if len(words & ROMANIZED_HINDI_WORDS) >= 2:
+        return "Hindi"
+    return "English"
 
 
 def _returning_caller_greeting(memory: CallerMemory) -> str:
@@ -148,63 +226,13 @@ def _returning_caller_greeting(memory: CallerMemory) -> str:
         return f"नमस्ते, {memory.name}। आपका फिर से स्वागत है। आज मैं कैसे मदद करूँ?"
     if context:
         return (
-            f"Namaste, {memory.name}. Last time we were discussing {context}. "
+            f"नमस्ते, {memory.name}. Last time we were discussing {context}. "
             "Would you like to continue from there?"
         )
     return (
-        f"Namaste, {memory.name}. Welcome back. "
-        "How can I help with local shopping today?"
+        f"नमस्ते, {memory.name}. Welcome back. How can I help with local shopping today?"
     )
 
-
-@dataclass(frozen=True)
-class CatalogueItem:
-    item_id: str
-    name: str
-    seller: str
-    category: str
-    price_inr: int
-    stock: int
-
-
-CATALOGUE = (
-    CatalogueItem(
-        "ART-101",
-        "Hand-painted terracotta diya set",
-        "Maya Crafts",
-        "handicrafts",
-        320,
-        12,
-    ),
-    CatalogueItem(
-        "TXT-204", "Handloom cotton stole", "Sakhi Weaves", "textiles", 850, 7
-    ),
-    CatalogueItem(
-        "FOD-310",
-        "Homemade mango pickle, 500 grams",
-        "Asha Foods",
-        "food",
-        240,
-        18,
-    ),
-    CatalogueItem(
-        "FOD-315",
-        "Fresh millet rotis, pack of 6",
-        "Shanti Tiffins",
-        "food",
-        120,
-        10,
-    ),
-    CatalogueItem("HOM-408", "Natural coir doormat", "Coastal Works", "home", 450, 5),
-    CatalogueItem(
-        "ELC-512",
-        "Portable Bluetooth speaker",
-        "Nagar Electronics",
-        "electronics audio speaker",
-        899,
-        9,
-    ),
-)
 
 BUSINESS_INVENTORY = {
     "mustard oil": {"quantity": 15, "unit": "liters"},
@@ -265,6 +293,7 @@ class Assistant(Agent):
         caller_id: str = "test-caller",
         memory_store: CallerMemoryStore | None = None,
         knowledge_base: KnowledgeBase | None = None,
+        catalogue_provider: Callable[[], Catalogue] | None = None,
     ) -> None:
         super().__init__(instructions=SYSTEM_PROMPT)
         self.caller_id = caller_id
@@ -273,8 +302,61 @@ class Assistant(Agent):
             CallerMemoryStore(database_path) if database_path else CallerMemoryStore()
         )
         self.knowledge_base = knowledge_base or KnowledgeBase()
+        self.catalogue_provider = catalogue_provider
         self.orders: list[dict[str, str | int]] = []
         self.credit_entries: list[dict[str, str | int]] = []
+
+    async def _catalogue(self):
+        if self.catalogue_provider is not None:
+            return await asyncio.to_thread(self.catalogue_provider)
+        url = os.getenv("CATALOGUE_API_URL", "http://127.0.0.1:8001/catalogue")
+        return await asyncio.to_thread(fetch_catalogue, url)
+
+    def llm_node(self, chat_ctx, tools, model_settings):
+        """Route every generated response using the latest user's language."""
+        routed_ctx = chat_ctx.copy()
+        user_message = next(
+            (
+                message
+                for message in reversed(routed_ctx.messages())
+                if message.role == "user"
+            ),
+            None,
+        )
+        if user_message is None:
+            return super().llm_node(routed_ctx, tools, model_settings)
+
+        language = _response_language(user_message.text_content)
+        if language == "Hindi":
+            directive = (
+                "For this response, reply only in natural Hindi written in "
+                "Devanagari. Keep only product names, brands, IDs, and unavoidable "
+                "technical terms in English. Do not use Romanized Hindi."
+            )
+        else:
+            directive = (
+                "For this response, reply only in English. Do not include Hindi "
+                "words, Romanized Hindi, or Devanagari text, except that the greeting "
+                "Namaste must always be written as नमस्ते."
+            )
+        user_message.content.append(f"[LANGUAGE INSTRUCTION: {directive}]")
+        normalized_message = user_message.text_content.casefold()
+        if any(
+            phrase in normalized_message
+            for phrase in (
+                "remember my",
+                "remember this",
+                "save my details",
+                "save this",
+            )
+        ):
+            user_message.content.append(
+                "[MEMORY INSTRUCTION: The user explicitly requested that the supplied "
+                "details be remembered. This is explicit consent. Call "
+                "save_caller_memory now with consent_given=true. Do not ask for "
+                "confirmation again and do not merely promise to remember.]"
+            )
+        return super().llm_node(routed_ctx, tools, model_settings)
 
     @function_tool
     async def lookup_caller(self, context: RunContext) -> str:
@@ -298,17 +380,23 @@ class Assistant(Agent):
         name: str,
         language_preference: str,
         consent_given: bool,
+        district: str = "",
         recent_order: str = "",
         last_conversation: str = "",
         usual_quantity: str = "",
         preferred_delivery_slot: str = "",
     ) -> str:
-        """Save facts only after the caller explicitly agrees to remember them.
+        """Persist caller details after explicit consent so future calls can use them.
+
+        Call this tool immediately when the caller accepts a stated memory proposal,
+        or when they explicitly ask to remember/save the exact details they supplied.
+        Do not claim details were remembered unless this tool returns success.
 
         Args:
             name: The caller's name.
             language_preference: Language the caller prefers.
             consent_given: True only after an explicit yes to saving these facts.
+            district: Caller district useful for local product discovery and delivery.
             recent_order: A recent product or order useful on the next call.
             last_conversation: Short summary the caller agreed to resume next time.
             usual_quantity: The caller's usual product quantity.
@@ -316,6 +404,7 @@ class Assistant(Agent):
         """
         del context
         facts = {
+            "district": district.strip(),
             "recent_order": recent_order.strip(),
             "last_conversation": last_conversation.strip(),
             "usual_quantity": usual_quantity.strip(),
@@ -332,6 +421,7 @@ class Assistant(Agent):
             return "Memory not saved: the caller did not explicitly consent."
         if not saved:
             return "Memory not saved: a caller name is required."
+        logger.info("Saved caller memory for participant %s", self.caller_id)
         return "Caller memory saved. It will be available on their next call."
 
     @function_tool
@@ -405,31 +495,99 @@ class Assistant(Agent):
         )
 
     @function_tool
-    async def search_catalogue(self, context: RunContext, query: str) -> str:
-        """Search products by name, category, seller, or item ID.
+    async def search_catalogue(
+        self,
+        context: RunContext,
+        query: str = "",
+        category: str = "",
+        max_price: int | None = None,
+    ) -> str:
+        """Fetch authoritative product information from the local catalogue.
+
+        Call this tool whenever a customer asks about product availability, price,
+        stock, products in a category, or products within a budget. Do not answer
+        product, price, or stock questions from memory. Use the returned catalogue
+        data as the source of truth. Results include price, unit, stock,
+        availability, seller, and the catalogue's last-updated timestamp.
 
         Args:
-            query: What the customer wants, such as pickles, textiles, or ART-101.
+            query: Product name, seller, item ID, or general search text. May be empty
+                when category is supplied.
+            category: Optional category such as dairy, bakery, food, or textiles.
+            max_price: Optional maximum listed unit price in Indian rupees.
         """
         del context
-        terms = _normalize_catalogue_query(query).split()
-        matches = [
-            item
-            for item in CATALOGUE
-            if all(term in self._catalogue_search_text(item) for term in terms)
-        ]
+        if max_price is not None and max_price < 0:
+            return "The maximum price must be zero or greater."
+        try:
+            catalogue = await self._catalogue()
+        except CatalogueUnavailableError as exc:
+            logger.exception("Catalogue lookup failed")
+            return str(exc)
+        normalized_query = _normalize_catalogue_query(query)
+        matches = search_products(
+            catalogue,
+            query=normalized_query,
+            category=category,
+            max_price=max_price,
+        )
         if not matches:
-            return "No matching products are currently listed."
+            return (
+                "No matching products were found in the local catalogue. "
+                f"Catalogue last updated: {catalogue.updated_at}."
+            )
 
-        return "\n".join(
-            f"{item.item_id}: {item.name} by {item.seller}; "
-            f"INR {item.price_inr}; {item.stock} available"
+        results = "\n".join(
+            f"{item.product_id}: {item.name} by {item.seller}; "
+            f"INR {item.price_inr} per {item.unit}; stock {item.stock_quantity}; "
+            f"available: {'yes' if item.available else 'no'}; "
+            f"catalogue last updated: {catalogue.updated_at}"
             for item in matches
         )
+        return (
+            f"{results}\nThis is a catalogue snapshot; the seller must confirm "
+            "the final price and availability."
+        )
+
+    @function_tool
+    async def calculate_order_total(
+        self,
+        context: RunContext,
+        product_ids: list[str],
+        quantities: list[int],
+    ) -> str:
+        """Calculate an order total using authoritative local catalogue prices.
+
+        Call this tool whenever a customer asks how much one or more requested
+        products will cost. Do not calculate catalogue order totals manually. The
+        tool validates product IDs, positive quantities, and available stock, then
+        returns line subtotals, the final INR total, and catalogue timestamp.
+
+        Args:
+            product_ids: Catalogue product IDs in order, such as DAI-101 and BAK-201.
+            quantities: Requested quantity corresponding to each product ID.
+        """
+        del context
+        try:
+            result = calculate_total(await self._catalogue(), product_ids, quantities)
+        except CatalogueUnavailableError as exc:
+            logger.exception("Order total catalogue lookup failed")
+            return str(exc)
+        except ValueError as exc:
+            return f"The order total could not be calculated: {exc}"
+
+        line_results = [
+            f"{line.quantity} x {line.name} at INR {line.unit_price_inr} "
+            f"= INR {line.subtotal_inr}"
+            for line in result.lines
+        ]
+        line_results.append(f"Order total = INR {result.total_inr}")
+        line_results.append(f"Catalogue last updated: {result.updated_at}")
+        return "\n".join(line_results)
 
     @staticmethod
     def _catalogue_search_text(item: CatalogueItem) -> str:
-        return f"{item.item_id} {item.name} {item.seller} {item.category}".casefold()
+        return f"{item.product_id} {item.name} {item.seller} {item.category}".casefold()
 
     @function_tool
     async def create_order(
@@ -451,14 +609,25 @@ class Assistant(Agent):
             delivery_address: Required when fulfilment is delivery.
         """
         del context
+        try:
+            catalogue = await self._catalogue()
+        except CatalogueUnavailableError as exc:
+            logger.exception("Order creation catalogue lookup failed")
+            return str(exc)
         item = next(
-            (product for product in CATALOGUE if product.item_id == item_id.upper()),
+            (
+                product
+                for product in catalogue.products
+                if product.product_id == item_id.upper()
+            ),
             None,
         )
         if item is None:
             return "Order not created: item ID is not in the catalogue."
-        if quantity < 1 or quantity > item.stock:
-            return f"Order not created: choose between 1 and {item.stock} units."
+        if quantity < 1 or quantity > item.stock_quantity:
+            return (
+                f"Order not created: choose between 1 and {item.stock_quantity} units."
+            )
 
         fulfilment = fulfilment.casefold().strip()
         if fulfilment not in {"pickup", "delivery"}:
@@ -473,7 +642,7 @@ class Assistant(Agent):
         self.orders.append(
             {
                 "order_id": order_id,
-                "item_id": item.item_id,
+                "item_id": item.product_id,
                 "quantity": quantity,
                 "customer_name": customer_name.strip(),
                 "fulfilment": fulfilment,

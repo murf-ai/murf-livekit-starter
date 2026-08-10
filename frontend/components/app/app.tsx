@@ -41,7 +41,7 @@ export function App({ appConfig }: AppProps) {
   return (
     <AgentSessionProvider session={session}>
       <AppSetup />
-      <main className="mitra-shell grid min-h-svh grid-cols-1 place-content-center overflow-hidden">
+      <main className="mitra-shell min-h-svh overflow-y-auto">
         <ViewController appConfig={appConfig} />
       </main>
       <StartAudioButton label="Start Audio" />
