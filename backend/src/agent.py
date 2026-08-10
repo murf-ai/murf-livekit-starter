@@ -31,6 +31,11 @@ try:
 except ImportError:
     import src.db as db
 
+try:
+    import schemes_data
+except ImportError:
+    import src.schemes_data as schemes_data
+
 
 class Assistant(Agent):
     def __init__(self, user_id: str, instructions: str = SYSTEM_PROMPT) -> None:
@@ -75,6 +80,74 @@ class Assistant(Agent):
 
         db.save_user(self.user_id, name, language_preference, cleaned_facts)
         return f"Successfully saved details for user {name} (ID: {self.user_id})."
+
+    @function_tool
+    async def list_available_schemes(self) -> str:
+        """Retrieves a catalog of all supported Indian financial and welfare government schemes.
+
+        Call this tool when the caller asks what government schemes are available, wants to explore scheme options, or asks what financial programs Sita can help with.
+        Do NOT call this tool if the user already specified a target scheme name or scheme ID.
+        """
+        import json
+
+        logger.info("Tool list_available_schemes called.")
+        res = schemes_data.list_all_schemes()
+        return json.dumps(res, ensure_ascii=False)
+
+    @function_tool
+    async def check_scheme_eligibility(
+        self,
+        scheme_id: str,
+        age: int | None = None,
+        annual_income: float | None = None,
+        is_taxpayer: bool | None = None,
+        gender: str | None = None,
+        land_holding_acres: float | None = None,
+    ) -> str:
+        """Evaluates official eligibility criteria for an Indian government financial scheme based on collected caller answers.
+
+        Call this tool ONLY AFTER asking and collecting the caller's relevant personal details (age, tax-paying status, land holding, gender, etc.).
+        Do NOT invoke this tool with assumed, placeholder, or invented values. Ask the caller first.
+
+        Args:
+            scheme_id: Scheme identifier code (e.g., 'pmjdy', 'pmsby', 'pmjjby', 'apy', 'ssy', 'pm_kisan', 'pmmy').
+            age: Caller's age in years (or girl child's age for SSY).
+            annual_income: Caller's total annual household income in Indian Rupees (INR).
+            is_taxpayer: True if the caller or spouse pays income tax; False otherwise.
+            gender: Caller's gender ('male', 'female', or 'other').
+            land_holding_acres: Total agricultural land owned by caller in acres (required for PM-KISAN).
+        """
+        import json
+
+        logger.info(
+            f"Tool check_scheme_eligibility called for scheme_id={scheme_id}, age={age}, taxpayer={is_taxpayer}"
+        )
+        res = schemes_data.evaluate_eligibility(
+            scheme_id=scheme_id,
+            age=age,
+            annual_income=annual_income,
+            is_taxpayer=is_taxpayer,
+            gender=gender,
+            land_holding_acres=land_holding_acres,
+        )
+        return json.dumps(res, ensure_ascii=False)
+
+    @function_tool
+    async def get_scheme_document_checklist(self, scheme_id: str) -> str:
+        """Retrieves the official list of mandatory documents and application instructions needed to apply for a specified government scheme.
+
+        Call this tool when the user asks what documents, papers, or ID proofs are required to open an account or apply for a specific scheme (e.g. PMJDY, SSY, APY, PM-KISAN, PMSBY, PMJJBY, PMMY).
+
+        Args:
+            scheme_id: Scheme identifier code (e.g., 'pmjdy', 'pmsby', 'pmjjby', 'apy', 'ssy', 'pm_kisan', 'pmmy').
+        """
+        import json
+
+        logger.info(
+            f"Tool get_scheme_document_checklist called for scheme_id={scheme_id}"
+        )
+        res = schemes_data.get_document_checklist(scheme_id=scheme_id)
+        return json.dumps(res, ensure_ascii=False)
 
 
 server = AgentServer()

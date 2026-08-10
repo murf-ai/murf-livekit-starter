@@ -210,18 +210,32 @@ docker build -t murf-voice-agent .
 docker run --env-file .env.local murf-voice-agent
 ```
 
+## Financial Services — Scheme Eligibility & Document Checklist
+
+The voice agent includes a specialized **Financial Services Eligibility Engine & Document Checklist Assistant** (`Sita`).
+
+### Data Source & Freshness (Step 2 & Step 5 Compliance)
+- **Data Source**: Uses a hand-built local dataset (`src/schemes_data.py`) initialized with real criteria from official Indian Government financial scheme guidelines (PMJDY, PMSBY, PMJJBY, APY, SSY, PM-KISAN, PMMY). It can be extended to connect directly to public APIs (e.g., `myscheme.gov.in` or `data.gov.in`).
+- **Effective Timestamp**: Rules and checklists are effective as of **August 2026 (Official FY 2026-27 Government Guidelines)**. All tool outputs state this timestamp out loud.
+
+### Failure Path Handling Out Loud (Step 4 Compliance)
+- If network timeouts or database errors occur, tools return explicit out-loud instructions (`OUT_LOUD_FAILURE`) directing the voice agent to inform the user verbally (e.g., *"I am currently experiencing a connection delay to the official scheme database. I can explain general guidelines or try again..."*).
+
 ## Project Structure
 
 ```
 backend/
 ├── src/
-│   └── agent.py          # Agent entrypoint — pipeline, prompt, config
+│   ├── agent.py          # Agent entrypoint — pipeline, tools, config
+│   ├── prompt.py         # Agent system prompt (Sita persona & rules)
+│   ├── db.py             # SQLite caller persistence
+│   └── schemes_data.py   # Scheme dataset & eligibility evaluation engine
 ├── tests/
-│   └── test_agent.py     # LLM-judged eval suite
-├── .env.example           # Environment variable template
-├── pyproject.toml         # Python dependencies (uv)
-├── Dockerfile             # Production container
-└── railway.toml           # Railway deploy config
+│   └── test_scheme_checker.py # Unit tests for scheme eligibility, timestamps, & error paths
+├── .env.example          # Environment variable template
+├── pyproject.toml        # Python dependencies (uv)
+├── Dockerfile            # Production container
+└── railway.toml          # Railway deploy config
 ```
 
 ## Links
