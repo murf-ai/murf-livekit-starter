@@ -210,12 +210,34 @@ docker build -t murf-voice-agent .
 docker run --env-file .env.local murf-voice-agent
 ```
 
+## Day 5 — Tools: Scheme Eligibility Checker
+
+The agent includes a dedicated function tool, `check_scheme_eligibility`, in `src/agent.py` to evaluate caller eligibility across major Indian government financial schemes (PMJDY, PMSBY, PMJJBY, APY, Sukanya Samriddhi Yojana, PM Mudra Yojana, SCSS, Sovereign Gold Bonds).
+
+### Data Source & Architecture
+- **Dataset**: `backend/src/scheme_data.json` contains a hand-built local dataset of official eligibility criteria, numeric age/income thresholds, scheme descriptions, and required document checklists sourced directly from official 2025–26 government scheme guidelines.
+- **Why Hand-Built**: Public endpoints such as `data.gov.in` do not offer a unified, real-time REST API for multi-scheme eligibility evaluation. Storing criteria in a local JSON dataset ensures low-latency, deterministic, and accurate responses during live voice interactions.
+
+### Tool Functionality
+- **Triggering Rules**: The system prompt (`src/prompt.py`) instructs the LLM to only trigger `check_scheme_eligibility` after explicitly collecting the caller's age, occupation, approximate annual income, bank account status, and (if relevant) whether they have a daughter under 10.
+- **Document Checklist & Disclosure**: Every successful execution returns qualifying schemes, eligibility rationale, a comprehensive document checklist required to apply, and a date disclosure stating "eligibility criteria as of the scheme's official 2025-26 guidelines".
+- **Spoken-Friendly Formatting**: All tool responses are formatted as natural language sentences (without Markdown headers or bullet points) for seamless speech generation by Murf Falcon TTS.
+
+### Failure Handling & Demo Testing
+- The dataset file `src/scheme_data.json` is loaded dynamically at call time inside a `try...except` block.
+- If the dataset file is missing, unreadable, or corrupted (`FileNotFoundError`, `json.JSONDecodeError`), the tool catches the error and gracefully returns a friendly spoken response:
+  > *"I'm not able to check live eligibility data right now, but based on what I know, here's my best guidance — please confirm with your bank or the official scheme portal."*
+- **Testing the Failure Path**: To simulate a network/data source outage for demo or evaluation purposes, temporarily rename `backend/src/scheme_data.json` (e.g. to `scheme_data.json.bak`) and invoke the eligibility check. The agent will speak the fallback message instead of failing or hallucinating criteria.
+
 ## Project Structure
 
 ```
 backend/
 ├── src/
-│   └── agent.py          # Agent entrypoint — pipeline, prompt, config
+│   ├── agent.py          # Agent entrypoint & function tools
+│   ├── prompt.py         # System prompt & memory/tool instructions
+│   ├── db.py             # SQLite caller memory database
+│   └── scheme_data.json  # Government scheme eligibility criteria & document checklists
 ├── tests/
 │   └── test_agent.py     # LLM-judged eval suite
 ├── .env.example           # Environment variable template
@@ -234,3 +256,4 @@ backend/
 ## License
 
 MIT — see [LICENSE](LICENSE).
+

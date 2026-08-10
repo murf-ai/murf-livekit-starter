@@ -82,6 +82,48 @@ const SHIMMER_MOTION_PROPS: MotionProps = {
   exit: 'hidden',
 };
 
+const AGENT_STATE_LABELS: Record<string, { label: string; className: string }> = {
+  disconnected: {
+    label: 'Disconnected',
+    className: 'bg-slate-500/10 text-slate-500 border-slate-500/20',
+  },
+  connecting: {
+    label: 'Connecting',
+    className: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+  },
+  initializing: {
+    label: 'Initializing',
+    className: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+  },
+  listening: {
+    label: 'Listening',
+    className: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
+  },
+  thinking: {
+    label: 'Thinking',
+    className: 'bg-teal-500/10 text-teal-500 border-teal-500/20',
+  },
+  speaking: {
+    label: 'Speaking',
+    className: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+  },
+};
+
+function AgentStateBadge({ agentState }: { agentState?: string }) {
+  const config = AGENT_STATE_LABELS[agentState ?? 'disconnected'] ?? AGENT_STATE_LABELS.disconnected;
+  return (
+    <div
+      className={cn(
+        'absolute top-4 left-1/2 z-20 -translate-x-1/2 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wider',
+        config.className
+      )}
+    >
+      <span className="size-2 rounded-full bg-current animate-pulse" />
+      <span>{config.label}</span>
+    </div>
+  );
+}
+
 interface FadeProps {
   top?: boolean;
   bottom?: boolean;
@@ -177,7 +219,7 @@ export function AgentSessionView_01({
 }: React.ComponentProps<'section'> & AgentSessionView_01Props) {
   const session = useSessionContext();
   const { messages } = useSessionMessages(session);
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(true);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { state: agentState } = useAgent();
 
@@ -205,6 +247,7 @@ export function AgentSessionView_01({
       {...props}
     >
       <Fade top className="absolute inset-x-4 top-0 z-10 h-40" />
+      <AgentStateBadge agentState={agentState} />
       {/* transcript */}
 
       <div className="absolute top-0 bottom-[135px] flex w-full flex-col md:bottom-[170px]">

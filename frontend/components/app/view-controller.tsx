@@ -1,11 +1,12 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
 import { useTheme } from 'next-themes';
 import { AnimatePresence, motion } from 'motion/react';
 import { useSessionContext } from '@livekit/components-react';
 import type { AppConfig } from '@/app-config';
 import { AgentSessionView_01 } from '@/components/agents-ui/blocks/agent-session-view-01';
-import { WelcomeView } from '@/components/app/welcome-view';
+import { WelcomeView, type WelcomeViewState } from '@/components/app/welcome-view';
 
 const MotionWelcomeView = motion.create(WelcomeView);
 const MotionSessionView = motion.create(AgentSessionView_01);
@@ -36,6 +37,41 @@ export function ViewController({ appConfig }: ViewControllerProps) {
   const { isConnected, start } = useSessionContext();
   const { resolvedTheme } = useTheme();
 
+  const [welcomeState, setWelcomeState] = useState<WelcomeViewState>('READY');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [hasConnectedOnce, setHasConnectedOnce] = useState(false);
+
+  const handleStartCall = useCallback(async () => {
+    setErrorMessage(null);
+    setWelcomeState('CONNECTING');
+    try {
+      await start();
+    } catch (err) {
+      const isMicError =
+        err instanceof DOMException &&
+        (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
+
+      setErrorMessage(
+        isMicError
+          ? 'Microphone access is blocked'
+          : err instanceof Error
+            ? err.message
+            : 'Failed to connect'
+      );
+      setWelcomeState('MIC_ERROR');
+    }
+  }, [start]);
+
+  // Track whether we've ever successfully connected, so a later
+  // disconnect is shown as CALL_ENDED rather than the initial READY state.
+  useEffect(() => {
+    if (isConnected) {
+      setHasConnectedOnce(true);
+    } else if (hasConnectedOnce) {
+      setWelcomeState('CALL_ENDED');
+    }
+  }, [isConnected, hasConnectedOnce]);
+
   return (
     <AnimatePresence mode="wait">
       {/* Welcome view */}
@@ -43,8 +79,12 @@ export function ViewController({ appConfig }: ViewControllerProps) {
         <MotionWelcomeView
           key="welcome"
           {...VIEW_MOTION_PROPS}
+          state={welcomeState}
+          errorMessage={errorMessage}
           startButtonText={appConfig.startButtonText}
-          onStartCall={start}
+          onStartCall={handleStartCall}
+          onStartAgain={handleStartCall}
+          onTryAgain={handleStartCall}
         />
       )}
       {/* Session view */}

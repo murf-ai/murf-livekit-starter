@@ -1,0 +1,112 @@
+{
+  "as_of": "official 2025-26 government scheme guidelines",
+  "schemes": [
+    {
+      "id": "pmjdy",
+      "name": "Pradhan Mantri Jan Dhan Yojana (PMJDY)",
+      "min_age": 10,
+      "max_age": 65,
+      "requires_unbanked": false,
+      "description": "Zero-balance savings account with free RuPay debit card, 2 Lakh rupees accident insurance, and up to 10,000 rupees overdraft facility.",
+      "documents": [
+        "Aadhaar card",
+        "PAN card or Form 60",
+        "Passport size photograph",
+        "Voter ID or Driving License if Aadhaar unavailable"
+      ]
+    },
+    {
+      "id": "pmsby",
+      "name": "Pradhan Mantri Suraksha Bima Yojana (PMSBY)",
+      "min_age": 18,
+      "max_age": 70,
+      "requires_bank_account": true,
+      "description": "Accidental death and disability insurance cover of 2 Lakh rupees for a nominal annual premium of 20 rupees.",
+      "documents": [
+        "Aadhaar card",
+        "Savings bank account details",
+        "Auto-debit consent nomination form"
+      ]
+    },
+    {
+      "id": "pmjjby",
+      "name": "Pradhan Mantri Jeevan Jyoti Bima Yojana (PMJJBY)",
+      "min_age": 18,
+      "max_age": 50,
+      "requires_bank_account": true,
+      "description": "Life insurance cover of 2 Lakh rupees for death due to any cause for an annual premium of 436 rupees.",
+      "documents": [
+        "Aadhaar card",
+        "Savings bank account details",
+        "Self-declaration of good health",
+        "Auto-debit nomination form"
+      ]
+    },
+    {
+      "id": "apy",
+      "name": "Atal Pension Yojana (APY)",
+      "min_age": 18,
+      "max_age": 40,
+      "requires_bank_account": true,
+      "target_occupation": "unorganized",
+      "description": "Guaranteed monthly pension of 1,000 to 5,000 rupees after age 60 for unorganized sector workers and non-taxpayers.",
+      "documents": [
+        "Aadhaar card",
+        "Savings bank account details",
+        "Mobile number",
+        "APY subscriber registration form"
+      ]
+    },
+    {
+      "id": "ssy",
+      "name": "Sukanya Samriddhi Yojana (SSY)",
+      "requires_daughter_under_10": true,
+      "description": "High-interest tax-free small savings scheme for a girl child under 10 years of age, maturing when she turns 21 or gets married after 18.",
+      "documents": [
+        "Birth certificate of girl child",
+        "Aadhaar and PAN card of parent or guardian",
+        "Address proof",
+        "Passport photos of parent and child"
+      ]
+    },
+    {
+      "id": "mudra",
+      "name": "Pradhan Mantri Mudra Yojana (PMMY)",
+      "min_age": 18,
+      "target_occupation": "business",
+      "description": "Collateral-free business loans up to 10 Lakh rupees for micro enterprises, artisans, shopkeepers, and self-employed individuals.",
+      "documents": [
+        "Business plan or proposal",
+        "Aadhaar card and PAN card",
+        "Residence proof",
+        "Bank account statements for past 6 months",
+        "Business registration certificate"
+      ]
+    },
+    {
+      "id": "scss",
+      "name": "Senior Citizen Savings Scheme (SCSS)",
+      "min_age": 60,
+      "description": "Government savings scheme offering high quarterly interest payouts and tax deduction under Section 80C for individuals aged 60 and above.",
+      "documents": [
+        "Age proof document like Aadhaar card or Senior Citizen Card",
+        "PAN card",
+        "Savings bank account details",
+        "Retirement proof for VRS applicants",
+        "Passport size photos"
+      ]
+    },
+    {
+      "id": "sgb",
+      "name": "Sovereign Gold Bonds (SGB)",
+      "min_age": 18,
+      "requires_bank_account": true,
+      "description": "Government-backed gold bonds paying 2.5 percent annual interest plus market appreciation on gold, with zero capital gains tax at 8-year maturity.",
+      "documents": [
+        "PAN card",
+        "Aadhaar card or voter ID for address proof",
+        "Bank account details for payout credit"
+      ]
+    }
+  ]
+}

@@ -1,4 +1,6 @@
 import logging
+import json
+from pathlib import Path
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -41,6 +43,107 @@ Guidelines for your speech output:
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(instructions=SYSTEM_PROMPT)
+
+    @function_tool
+    async def check_scheme_eligibility(
+        self,
+        context: RunContext,
+        age: int,
+        occupation: str,
+        approximate_annual_income: int,
+        has_bank_account: bool,
+        has_daughter_under_10: bool = False,
+    ) -> str:
+        """Determine which Indian government financial schemes a caller qualifies for based on their personal situation.
+
+        CRITICAL REQUIREMENT: ONLY call this function AFTER collecting the caller's age, occupation or employment type, approximate annual income, and whether they have an existing bank account. If Sukanya Samriddhi is relevant, also ask if they have a daughter under 10 years of age. Do NOT call this tool prematurely before these details are known.
+
+        Args:
+            age: Caller's age in years.
+            occupation: Caller's occupation or employment type (e.g., 'farmer', 'salaried', 'unorganized worker', 'self-employed', 'business owner', 'student', 'retired').
+            approximate_annual_income: Caller's approximate annual income in Indian Rupees (INR).
+            has_bank_account: True if the caller already has a savings bank account, False otherwise.
+            has_daughter_under_10: True if the caller has a daughter under 10 years of age, False otherwise.
+        """
+        logger.info(
+            f"Checking scheme eligibility for age={age}, occupation='{occupation}', income={approximate_annual_income}, bank_account={has_bank_account}, daughter_under_10={has_daughter_under_10}"
+        )
+
+        try:
+            data_file = Path(__file__).parent / "scheme_data.json"
+            if not data_file.exists():
+                raise FileNotFoundError("Scheme data file scheme_data.json not found.")
+
+            with open(data_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            as_of_disclosure = data.get("as_of", "official government scheme guidelines")
+            schemes_list = data.get("schemes", [])
+
+            eligible_schemes = []
+            occ_lower = str(occupation).lower().strip()
+
+            for s in schemes_list:
+                min_age = s.get("min_age", 0)
+                max_age = s.get("max_age", 150)
+                req_bank = s.get("requires_bank_account", False)
+                target_occ = s.get("target_occupation")
+                req_daughter = s.get("requires_daughter_under_10", False)
+
+                if age < min_age or age > max_age:
+                    continue
+
+                if req_bank and not has_bank_account:
+                    continue
+
+                if req_daughter and not has_daughter_under_10:
+                    continue
+
+                if target_occ == "unorganized" and any(
+                    k in occ_lower for k in ["salaried", "corporate", "government servant", "it professional"]
+                ):
+                    continue
+
+                if target_occ == "business" and not any(
+                    k in occ_lower for k in ["business", "shop", "micro", "self-employed", "artisan", "entrepreneur", "trader", "vendor", "farmer", "worker", "self", "own", "freelance"]
+                ):
+                    continue
+
+                eligible_schemes.append(s)
+
+            if not eligible_schemes:
+                return (
+                    f"Based on eligibility criteria as of the scheme's {as_of_disclosure}, no specific matched schemes were found for your current profile. "
+                    "However, you may still visit your nearest nationalized bank branch or official government scheme portal for personalized options."
+                )
+
+            response_parts = [
+                f"Based on your profile, here are the official government financial schemes you qualify for, eligibility criteria as of the scheme's {as_of_disclosure}:"
+            ]
+
+            all_docs = set()
+
+            for s in eligible_schemes:
+                name = s["name"]
+                desc = s["description"]
+                docs = s.get("documents", [])
+                all_docs.update(docs)
+                response_parts.append(f"{name}: {desc}")
+
+            docs_list_str = ", ".join(sorted(list(all_docs)))
+            response_parts.append(
+                f"To apply for these schemes, your document checklist includes: {docs_list_str}. "
+                "Please present these at your nearest bank branch or post office."
+            )
+
+            return " ".join(response_parts)
+
+        except Exception as e:
+            logger.error(f"Error checking scheme eligibility: {e}", exc_info=True)
+            return (
+                "I'm not able to check live eligibility data right now, but based on what I know, "
+                "here's my best guidance — please confirm with your bank or the official scheme portal."
+            )
 
     @function_tool
     async def explain_scheme(self, context: RunContext, scheme_name: str) -> str:
@@ -297,6 +400,52 @@ async def my_agent(ctx: JobContext):
     # Join the room and connect to the user
     await ctx.connect()
 
+ 
+
+    # Look up caller memory directly in Python (not as an LLM tool call) so the
+    # very first LLM turn is a plain greeting, never a function call.
+    # Gemini requires a function call to come right after a user turn or a
+    # function-response turn — calling a tool as the agent's first-ever turn
+    # violates that and causes a 400 "function call turn" error.
+    caller_id = "caller_default"
+    if ctx.room and ctx.room.remote_participants:
+        for p in ctx.room.remote_participants.values():
+            if p.identity:
+                caller_id = p.identity
+                break
+
+    try:
+        memory = lookup_caller(caller_id)
+    except Exception as e:
+        logger.warning(f"Caller memory lookup failed: {e}")
+        memory = {"exists": False}
+
+    if memory.get("exists"):
+        saved_name = memory.get("name") or ""
+        saved_lang = memory.get("language_preference") or ""
+        greeting_instructions = (
+            f"The caller has been here before, but do NOT bring that up yet or reference "
+            f"any saved facts in this opening greeting. "
+            + (f"If you know their name ('{saved_name}'), you may greet them by name. " if saved_name else "")
+            + (f"Greet in their preferred language if known ('{saved_lang}') "
+               "(e.g. 'नमस्ते रमेश!' if Hindi, always in Devanagari script, never romanized). "
+               if saved_lang else "")
+            + "Introduce yourself as FinGuide, your AI Financial Guidance Assistant, and simply ask how "
+              "you can help them today — do not mention a previous conversation, do not ask if they want "
+              "to continue from last time, and do not list any saved facts. Only bring up past details if "
+              "the caller explicitly asks whether you remember them or their last conversation. "
+              "Do not call any tools for this greeting."
+        )
+    else:
+        greeting_instructions = (
+            "This is a new caller with no saved memory. Introduce yourself as FinGuide, "
+            "your AI Financial Guidance Assistant, and ask how you can help them today. "
+            "Do not call any tools for this greeting."
+        )
+
+    await session.generate_reply(instructions=greeting_instructions)
+
+ 
 
 if __name__ == "__main__":
     cli.run_app(server)
