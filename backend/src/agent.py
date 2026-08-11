@@ -485,6 +485,9 @@ def extract_caller_name(text: str) -> str | None:
         # Keep first 3 tokens max (e.g. "Raj Kumar Sharma")
         parts = [p for p in re.split(r"\s+", candidate) if p]
         parts = parts[:3]
+        # Drop leading articles ("I am a Raj" → ["Raj"])
+        while parts and parts[0].lower() in {"a", "an", "the"}:
+            parts.pop(0)
         if not parts:
             continue
         # Drop trailing filler words
@@ -596,22 +599,38 @@ def _format_just_saved_note(name: str, lang: str) -> str:
 
 
 def _wants_save(text: str) -> bool:
-    """True if user asked to save/remember the conversation."""
+    """True if user asked to save/remember the conversation.
+
+    'do you remember me?' and 'remember me?' are recall requests, NOT save.
+    """
     t = (text or "").lower()
-    keys = (
+    # Explicit save keywords (never ambiguous)
+    save_keys = (
         "save",
-        "remember",
+        "store",
         "yaad rakh",
         "yaad rakho",
         "save karo",
         "save kar",
         "yaad rakhna",
-        "store",
         "बातचीत सेव",
         "सेव कर",
         "याद रख",
     )
-    return any(k in t for k in keys)
+    if any(k in t for k in save_keys):
+        return True
+    # "remember" is ambiguous — only treat as save if NOT a recall phrase
+    if "remember" in t:
+        recall = (
+            "do you remember",
+            "you remember me",
+            "can you remember me",
+            "remember me?",
+            "remember me.",
+        )
+        # "remember this", "remember my conversation" → save; recall phrases → not save
+        return not any(r in t for r in recall)
+    return False
 
 
 class Assistant(Agent):
@@ -689,10 +708,19 @@ class Assistant(Agent):
             )
         else:
             self._welcomed_this_session = True
-            payload["instruction"] = (
-                f"NEW call returning caller {name}. "
-                f"ONE short welcome-back only, then help. Under 20 words."
-            )
+            last_topic = (caller.get("facts") or {}).get("last_topic", "")
+            if last_topic:
+                payload["instruction"] = (
+                    f"RETURNING caller {name} on a NEW call. "
+                    f"Say EXACTLY: 'Welcome back {name}! I remember we were talking about {last_topic}. How can I help you today?' "
+                    f"Keep under 25 words. Do NOT ask to save."
+                )
+            else:
+                payload["instruction"] = (
+                    f"RETURNING caller {name} on a NEW call. "
+                    f"Say: 'Welcome back {name}! How can I help you today?' "
+                    f"Keep under 15 words."
+                )
         return json.dumps(payload)
 
     @function_tool
