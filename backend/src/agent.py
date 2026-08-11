@@ -515,14 +515,10 @@ def _format_memory_note(caller: dict) -> str:
     """System note for a returning caller on initial contact."""
     name = caller.get("name") or caller.get("user_id") or "caller"
     facts = caller.get("facts") or {}
-    facts_bits = []
-    for key, value in list(facts.items())[:4]:
-        facts_bits.append(f"{key}={value}")
-    facts_txt = "; ".join(facts_bits) if facts_bits else "none"
+    last_topic = facts.get("last_topic") or "government schemes"
     return (
-        f"{_MEMORY_PREFIX} RETURNING_CALLER (first turn only): name={name}; "
-        f"facts=[{facts_txt}]. "
-        f"Say ONE short welcome-back line with their name, then help. "
+        f"{_MEMORY_PREFIX} RETURNING_CALLER (first turn only): name={name}; last_topic={last_topic}. "
+        f"Say: 'Hey {name}! Nice to talk to you again. Last time we talked about {last_topic}. How can I help you today?' "
         f"Do NOT say you just saved anything. Keep under 20 words."
     )
 
@@ -542,11 +538,14 @@ def _format_passive_memory(caller: dict) -> str:
 
 
 def _save_confirm_line(name: str, lang: str) -> str:
-    """Spoken confirmation after save — short, no welcome-back."""
+    """Spoken confirmation after save — exact format requested."""
     clean = (name or "there").strip() or "there"
     if (lang or "hi").lower().startswith("hi"):
-        return f"Dhanyavad {clean}! Maine aapki baatcheet save kar li hai."
-    return f"Thanks, I've saved the conversation, {clean}."
+        return (
+            f"Dhanyavad {clean}! Maine aapki baatcheet save kar li hai, "
+            f"aapse baat karke accha laga."
+        )
+    return f"Thank you {clean}! I have saved the conversation, nice to talk to you."
 
 
 def _format_just_saved_note(name: str, lang: str) -> str:
@@ -588,6 +587,7 @@ class Assistant(Agent):
         self._voice = VOICE_HI
         self._known_caller_name: str | None = None
         self._memory_loaded = False
+        self._last_user_topic = "government schemes"
         # Session flags — stop welcome-back spam after a same-call save
         self._saved_this_session = False
         self._welcomed_this_session = False
@@ -613,15 +613,15 @@ class Assistant(Agent):
             )
         ):
             return json.dumps(
-                    {
-                        "found": True,
-                        "already_in_session": True,
-                        "instruction": (
-                            "You already saved them this call. "
-                            "Do NOT welcome back. Just continue helping briefly."
-                        ),
-                    }
-                )
+                {
+                    "found": True,
+                    "already_in_session": True,
+                    "instruction": (
+                        "You already saved them this call. "
+                        "Do NOT welcome back. Just continue helping briefly."
+                    ),
+                }
+            )
 
         caller = db.get_caller(clean) or (
             db.get_caller(clean_title) if clean.isascii() else None
@@ -682,7 +682,10 @@ class Assistant(Agent):
         user_id = clean_name.lower().replace(" ", "_")
         lang = language_preference or self._reply_lang
 
-        facts_dict = {"saved_conversation": True}
+        facts_dict = {
+            "saved_conversation": True,
+            "last_topic": self._last_user_topic,
+        }
         if facts:
             if isinstance(facts, dict):
                 facts_dict.update(facts)
@@ -1045,6 +1048,25 @@ class Assistant(Agent):
         reply_lang = await self.apply_language(
             text, self._last_stt_language, turn_ctx=turn_ctx
         )
+
+        # Track active topic for caller memory recall
+        text_lower = text.lower()
+        if (
+            "bank account" in text_lower
+            or "bank" in text_lower
+            or "khata" in text_lower
+        ):
+            self._last_user_topic = "opening a bank account"
+        elif "pmjdy" in text_lower or "jan dhan" in text_lower:
+            self._last_user_topic = "PMJDY scheme"
+        elif "pmsby" in text_lower or "suraksha" in text_lower:
+            self._last_user_topic = "PMSBY insurance"
+        elif "pmjjby" in text_lower or "jeevan jyoti" in text_lower:
+            self._last_user_topic = "PMJJBY life insurance"
+        elif "apy" in text_lower or "pension" in text_lower:
+            self._last_user_topic = "Atal Pension Yojana"
+        elif "scheme" in text_lower or "yojana" in text_lower:
+            self._last_user_topic = "government schemes"
 
         # Cross-call memory: auto lookup/save when user shares a name.
         try:
