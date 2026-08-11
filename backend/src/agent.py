@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import sqlite3
+import aiohttp
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -22,8 +23,13 @@ from livekit.plugins import murf, silero, google, deepgram, noise_cancellation
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 logger = logging.getLogger("agent")
-load_dotenv(".env.local")
+import sys
+from pathlib import Path
 
+# Force the script to look for .env.local in the backend folder
+backend_dir = Path(__file__).resolve().parent.parent
+env_path = backend_dir / ".env.local"
+load_dotenv(dotenv_path=env_path)
 # 1. Initialize SQLite Database
 def init_db():
     conn = sqlite3.connect("raksha_triage.db")
@@ -44,24 +50,21 @@ def init_db():
 init_db()
 
 SYSTEM_PROMPT = """
-You are Raksha, a real-time disaster response triage assistant in India. 
-Communicate calmly and urgently. 
+You are Raksha, an automated disaster response triage assistant in India.
+Communicate calmly, urgently, and speak in natural "Hinglish".
 
-You MUST speak in "Hinglish" — a natural, conversational mix of English and Hindi. 
-Do not use pure, highly formal Hindi. Use common English words for context.
+OUTBOUND CALL OPENING RULE (CRITICAL):
+When the user picks up the phone and says hello, you MUST start with this EXACT greeting:
+"Namaste, this is Raksha, the automated emergency alert system. I am calling because a severe flood warning has been issued for your area. To stop receiving these alerts, just say 'Opt out'. Are you and your family currently safe?"
 
-MEMORY & TOOL CHAINING RULES (CRITICAL):
-1. When a user connects, call `lookup_caller` first using a default ID like 'user_123'. 
-2. TOOL CHAINING: If they are a returning user and you found their location, IMMEDIATELY call `get_disaster_alerts_and_shelters` using their saved location before you even say hello.
-3. Greet them by name, confirm their safety, and instantly provide the real-time shelter data you just looked up. 
-4. ALWAYS state out loud when the shelter data was updated (e.g., "This data is current as of...").
+OUTBOUND RULES & CONVERSATION FLOW:
+1. If they say they are safe: Advise them to stay indoors and hang up gracefully.
+2. If they need help/rescue: Immediately ask for their location, household size, and mobility needs.
+3. If they say "Opt out" or "Stop": Politely confirm they are unsubscribed from emergency alerts, then stop speaking and end the conversation.
 
-GRACEFUL FAILURES:
-If a tool returns a network error, DO NOT invent an answer. Honestly state that the system is currently down and provide general safety advice (like moving to high ground).
-
-CONSENT & FORGET:
-- You MUST ask for permission before calling `save_caller_info`. 
-- If they ask to be forgotten, call `delete_caller_info`.
+MEMORY & TOOL CHAINING RULES:
+1. If they provide their location or user ID, you can use `lookup_caller` or `check_realtime_hazards` if requested, but your primary goal is to assess their immediate safety.
+2. If they need to be rescued, use `save_caller_info` to log their details for the NDRF. 
 
 LANGUAGE & SCRIPT RULES:
 Always write every language in its own native script.
@@ -129,38 +132,54 @@ class Assistant(Agent):
             return "User data successfully deleted from the emergency database."
         return "No data found for this user."
 
-    # INDENTED PROPERLY INSIDE Assistant CLASS NOW:
     @function_tool
-    async def get_disaster_alerts_and_shelters(self, context: RunContext, district: str):
-        """Fetch the real-time disaster alert level and nearest active NDRF shelter for a given district.
-        Call this immediately after learning the user's location, either from 'lookup_caller' or by asking them.
+    async def check_realtime_hazards(self, context: RunContext, district: str):
+        """Fetch real-time internet weather and flood hazards for the user's location.
+        Call this immediately after learning the user's location to check if they are in immediate danger.
         """
+        import aiohttp # Ensures aiohttp is available
         try:
-            # HIDDEN TRIGGER FOR YOUR VIDEO DEMO:
-            # We remove spaces so "network down" or "networkdown" both trigger it!
+            # 1. The Video Demo Trigger (Graceful Failure)
             safe_district = district.lower().replace(" ", "")
             if "networkdown" in safe_district or "offline" in safe_district:
-                raise Exception("CRITICAL: National Disaster API Timeout")
-            await asyncio.sleep(1)
+                raise Exception("CRITICAL: National Hazard API Timeout")
 
-            MOCK_DISASTER_DATA = {
-                "mumbai": {"status": "Red Alert - Severe Flooding", "shelter": "Bandra Kurla Complex Relief Camp", "capacity": "250 beds available"},
-                "chennai": {"status": "Orange Alert - Cyclone Warning", "shelter": "Chennai Trade Centre", "capacity": "120 beds available"},
-                "delhi": {"status": "Yellow Alert - Heatwave", "shelter": "Pragati Maidan Hall 3", "capacity": "500+ beds available"}
-            }
+            # 2. GEOCODING API: Convert the district name into real Lat/Long coordinates
+            geocode_url = f"https://geocoding-api.open-meteo.com/v1/search?name={district}&count=1"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(geocode_url) as resp:
+                    geo_data = await resp.json()
 
-            district_key = district.lower().strip()
+            if not geo_data.get("results"):
+                return f"Could not locate the district '{district}' in the global database. Advise the user to stay alert."
+
+            lat = geo_data["results"][0]["latitude"]
+            lon = geo_data["results"][0]["longitude"]
+
+            # 3. REAL-TIME WEATHER API: Fetch live precipitation and wind data
+            weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=precipitation,wind_speed_10m"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(weather_url) as resp:
+                    weather_data = await resp.json()
+
+            current = weather_data["current"]
+            rain_mm = current["precipitation"]
+            wind_kmh = current["wind_speed_10m"]
             current_time = datetime.now().strftime("%I:%M %p")
 
-            if district_key in MOCK_DISASTER_DATA:
-                data = MOCK_DISASTER_DATA[district_key]
-                return f"Alert Status: {data['status']}. Nearest Shelter: {data['shelter']} ({data['capacity']}). Data pulled live as of {current_time} today."
+            # 4. Compute the Hazard Logic based on real data
+            if rain_mm > 15.0 or wind_kmh > 60.0:
+                alert = "RED ALERT: Severe hazard detected. Heavy flooding or cyclonic winds in progress."
+            elif rain_mm > 5.0 or wind_kmh > 40.0:
+                alert = "ORANGE ALERT: Moderate hazard. Heavy rain or strong winds detected."
             else:
-                return f"No severe alerts currently active for {district}. Data current as of {current_time} today. Advise user to stay alert."
-                
+                alert = "NO ALERT: Currently clear, but advise caution as conditions change rapidly."
+
+            return f"Real-time data for {district}: {alert} Current rainfall is {rain_mm} mm and wind speed is {wind_kmh} km/h. Data pulled live from the internet as of {current_time} today."
+
         except Exception as e:
-            logger.error(f"API Error fetching disaster data: {e}")
-            return "CRITICAL ERROR: The live disaster database is currently unreachable due to network failure. DO NOT INVENT A SHELTER. Tell the user the system is down, advise them to move to high ground immediately, and tune into local emergency radio."
+            logger.error(f"API Error fetching live data: {e}")
+            return "CRITICAL ERROR: The live hazard database is currently unreachable due to network failure. DO NOT INVENT WEATHER DATA. Tell the user the system is down and advise them to move to high ground immediately."
 
 server = AgentServer()
 
@@ -175,7 +194,6 @@ async def my_agent(ctx: JobContext):
         "room": ctx.room.name,
     }
     
-
     session = AgentSession(
         stt=deepgram.STT(model="nova-3", language="multi"),
         llm=google.LLM(model="gemini-3.5-flash-lite"),
