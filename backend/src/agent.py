@@ -511,6 +511,47 @@ def extract_caller_name(text: str) -> str | None:
     return None
 
 
+def _extract_bare_name(text: str) -> str | None:
+    """Extract a bare name when explicitly awaiting one (no 'my name is' prefix needed)."""
+    raw = re.sub(r"[.,!?:;\"']+", "", (text or "").strip()).strip()
+    if not raw or len(raw) < 2:
+        return None
+    parts = [p for p in re.split(r"\s+", raw) if p and len(p) >= 2]
+    _bare_stops = _NAME_STOPWORDS | {
+        "is",
+        "its",
+        "name",
+        "mera",
+        "naam",
+        "hai",
+        "hoon",
+        "hun",
+        "hu",
+        "and",
+        "or",
+        "but",
+        "so",
+        "just",
+        "only",
+        "please",
+        "can",
+        "could",
+        "you",
+        "sure",
+        "thank",
+        "thanks",
+        "im",
+    }
+    candidates = [p for p in parts if p.lower() not in _bare_stops]
+    if not candidates:
+        return None
+    name_parts = candidates[:2]
+    name = " ".join(name_parts).strip()
+    if 2 <= len(name) <= 40:
+        return name.title() if name.isascii() else name
+    return None
+
+
 def _format_memory_note(caller: dict) -> str:
     """System note for a returning caller on a NEW call session."""
     name = caller.get("name") or caller.get("user_id") or "caller"
@@ -879,8 +920,18 @@ class Assistant(Agent):
             )
 
     def _auto_memory_for_turn(self, turn_ctx: llm.ChatContext, text: str) -> None:
-        """Lookup/save memory from name phrases without waiting on the LLM tool call."""
-        # Refusal check: if user says no or don't save, do not auto-load or save
+        """Auto-load returning caller memory for a NEW call session only.
+
+        All save logic is handled by the save intercept in on_user_turn_completed
+        which bypasses the LLM entirely (session.say + StopResponse).
+        """
+        if self._saved_this_session or self._welcomed_this_session:
+            return
+
+        name = extract_caller_name(text)
+        if not name:
+            return
+
         text_lower = (text or "").lower()
         if any(
             w in text_lower
@@ -888,53 +939,15 @@ class Assistant(Agent):
         ):
             return
 
-        name = extract_caller_name(text)
-        if not name:
-            return
-
-        # Priority 1: User explicitly asked to save or is providing name to save
-        if (
-            _wants_save(text)
-            or self._saved_this_session
-            or "my name is" in text_lower
-            or "mera naam" in text_lower
-        ):
-            user_id = name.lower().replace(" ", "_")
-            res = db.save_caller(
-                user_id=user_id,
-                name=name,
-                language_preference=self._reply_lang,
-                facts={
-                    "introduced_via": "auto_name_detect",
-                    "saved_conversation": True,
-                    "last_topic": self._last_user_topic,
-                },
-                consent_given=True,
-            )
-            self._known_caller_name = name
+        # Returning caller on a NEW call — look up stored profile
+        existing = db.get_caller(name)
+        if existing:
+            self._known_caller_name = existing.get("name") or name
             self._memory_loaded = True
-            self._saved_this_session = True
+            self._welcomed_this_session = True
             _strip_lang_locks(turn_ctx)
-            turn_ctx.add_message(
-                role="system",
-                content=_format_just_saved_note(name, self._reply_lang),
-            )
-            logger.info("Auto-saved caller profile for %s: %s", name, res)
-            return
-
-        # Priority 2: Returning caller on a NEW call session (not saving current session)
-        if not self._saved_this_session and not self._welcomed_this_session:
-            existing = db.get_caller(name)
-            if existing:
-                self._known_caller_name = existing.get("name") or name
-                self._memory_loaded = True
-                self._welcomed_this_session = True
-                _strip_lang_locks(turn_ctx)
-                turn_ctx.add_message(
-                    role="system", content=_format_memory_note(existing)
-                )
-                logger.info("Auto-loaded returning caller memory for %s", name)
-                return
+            turn_ctx.add_message(role="system", content=_format_memory_note(existing))
+            logger.info("Auto-loaded returning caller memory for %s", name)
 
     def note_stt_language(self, language: str | None, transcript: str) -> None:
         if language:
@@ -1034,7 +1047,12 @@ class Assistant(Agent):
         if not text_clean or text_clean in noise:
             logger.info("Ignoring noise/echo transcript: %r", text)
             raise StopResponse()
-        if not is_short_greet and (len(words) < 2 or len(text_clean) < 6):
+        if (
+            not is_short_greet
+            and not self._awaiting_name_for_save
+            and not _wants_save(text_norm)
+            and (len(words) < 2 or len(text_clean) < 6)
+        ):
             logger.info("Ignoring ultra-short non-greet transcript: %r", text)
             raise StopResponse()
 
@@ -1042,6 +1060,120 @@ class Assistant(Agent):
         reply_lang = await self.apply_language(
             text, self._last_stt_language, turn_ctx=turn_ctx
         )
+
+        # ── SAVE INTERCEPT: bypass LLM entirely for save flow ──────
+        # This prevents the agent from spamming previous topic answers
+        # when the user is trying to save the conversation.
+        if self._awaiting_name_for_save:
+            _refusal = {
+                "no",
+                "nahi",
+                "nahin",
+                "nah",
+                "naah",
+                "mat",
+                "cancel",
+                "skip",
+                "ruko",
+                "band",
+                "chhodo",
+            }
+            text_words = set(re.findall(r"[a-zA-Z\u0900-\u097F']+", text_clean))
+            is_refusal = (
+                bool(text_words & _refusal)
+                or "don't save" in text_clean
+                or "dont save" in text_clean
+            )
+            if is_refusal:
+                self._awaiting_name_for_save = False
+                logger.info("Save cancelled by user")
+                ack = (
+                    "Theek hai, koi baat nahi! Aur kya madad karoon?"
+                    if reply_lang == "hi"
+                    else "No problem! How else can I help you?"
+                )
+                try:
+                    await self.session.say(ack, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak cancel ack: %s", err)
+                raise StopResponse()
+
+            name = extract_caller_name(text) or _extract_bare_name(text)
+            if name:
+                self._awaiting_name_for_save = False
+                user_id = name.lower().replace(" ", "_")
+                db.save_caller(
+                    user_id=user_id,
+                    name=name,
+                    language_preference=self._reply_lang,
+                    facts={
+                        "saved_conversation": True,
+                        "last_topic": self._last_user_topic,
+                    },
+                    consent_given=True,
+                )
+                self._known_caller_name = name
+                self._memory_loaded = True
+                self._saved_this_session = True
+                confirm = _save_confirm_line(name, reply_lang)
+                logger.info("Save intercept: saved %s", name)
+                try:
+                    await self.session.say(confirm, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak save confirm: %s", err)
+                raise StopResponse()
+            else:
+                # Could not extract name — re-ask without letting LLM run
+                ask = (
+                    "Kripya apna naam bataiye."
+                    if reply_lang == "hi"
+                    else "Could you please tell me your name?"
+                )
+                try:
+                    await self.session.say(ask, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not re-ask name: %s", err)
+                raise StopResponse()
+
+        if _wants_save(text_clean):
+            name = extract_caller_name(text)
+            if name:
+                user_id = name.lower().replace(" ", "_")
+                db.save_caller(
+                    user_id=user_id,
+                    name=name,
+                    language_preference=self._reply_lang,
+                    facts={
+                        "saved_conversation": True,
+                        "last_topic": self._last_user_topic,
+                    },
+                    consent_given=True,
+                )
+                self._known_caller_name = name
+                self._memory_loaded = True
+                self._saved_this_session = True
+                self._awaiting_name_for_save = False
+                confirm = _save_confirm_line(name, reply_lang)
+                logger.info("Save intercept: saved %s directly", name)
+                try:
+                    await self.session.say(confirm, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak save confirm: %s", err)
+                raise StopResponse()
+            else:
+                self._awaiting_name_for_save = True
+                ask = (
+                    "Zaroor! Kripya apna naam bataiye taaki main conversation save kar sakoon."
+                    if reply_lang == "hi"
+                    else "Sure! Please tell me your name so I can save this conversation."
+                )
+                logger.info("Save intercept: awaiting name")
+                try:
+                    await self.session.say(ask, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not ask for name: %s", err)
+                raise StopResponse()
+        # ── END SAVE INTERCEPT ─────────────────────────────────────
 
         # Track active topic for caller memory recall
         text_lower = text.lower()
@@ -1051,6 +1183,8 @@ class Assistant(Agent):
             or "khata" in text_lower
         ):
             self._last_user_topic = "opening a bank account"
+        elif bool(re.search(r"\bfd\b", text_lower)) or "fixed deposit" in text_lower:
+            self._last_user_topic = "Fixed Deposits"
         elif "pmjdy" in text_lower or "jan dhan" in text_lower:
             self._last_user_topic = "PMJDY scheme"
         elif "pmsby" in text_lower or "suraksha" in text_lower:
@@ -1059,10 +1193,16 @@ class Assistant(Agent):
             self._last_user_topic = "PMJJBY life insurance"
         elif "apy" in text_lower or "pension" in text_lower:
             self._last_user_topic = "Atal Pension Yojana"
+        elif "upi" in text_lower or "digital payment" in text_lower:
+            self._last_user_topic = "UPI and digital payments"
+        elif "loan" in text_lower or "emi" in text_lower:
+            self._last_user_topic = "loans"
+        elif "insurance" in text_lower or "bima" in text_lower:
+            self._last_user_topic = "insurance"
         elif "scheme" in text_lower or "yojana" in text_lower:
             self._last_user_topic = "government schemes"
 
-        # Cross-call memory: auto lookup/save when user shares a name.
+        # Cross-call memory: auto lookup returning caller on NEW call.
         try:
             self._auto_memory_for_turn(turn_ctx, text)
         except Exception as err:
