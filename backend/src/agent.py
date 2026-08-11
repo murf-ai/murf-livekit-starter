@@ -562,7 +562,8 @@ def _format_memory_note(caller: dict) -> str:
     last_topic = facts.get("last_topic") or "government schemes"
     return (
         f"{_MEMORY_PREFIX} RETURNING_CALLER (new call only): name={name}; last_topic={last_topic}. "
-        f"Say: 'Hello {name}, it\\'s great to see you again! I remember we were talking about {last_topic}. How can I help you today?' "
+        f"Say: 'Welcome back {name}! I remember we were talking about {last_topic}. How can I help you today?' "
+        f"(or in Hindi: 'Welcome back {name}! Pichhli baar humne {last_topic} ke baare mein baat ki thi. Aaj main aapki kya madad karoon?') "
         f"Do NOT say you just saved anything. Keep under 25 words."
     )
 
@@ -1044,6 +1045,7 @@ class Assistant(Agent):
         self, turn_ctx: llm.ChatContext, new_message: llm.ChatMessage
     ) -> None:
         """Lock language for this turn without polluting history or stacking locks."""
+        was_welcomed_before_turn = self._welcomed_this_session
         text = new_message.text_content or ""
         text_clean = text.strip().lower()
         words = re.findall(r"[a-zA-Z\u0900-\u097F']+", text_clean)
@@ -1260,11 +1262,11 @@ class Assistant(Agent):
         if self._known_caller_name and self._memory_loaded:
             caller = db.get_caller(self._known_caller_name)
             if caller:
-                if self._welcomed_this_session or self._saved_this_session:
+                if was_welcomed_before_turn or self._saved_this_session:
                     turn_ctx.add_message(
                         role="system", content=_format_passive_memory(caller)
                     )
-                else:
+                elif not self._welcomed_this_session:
                     self._welcomed_this_session = True
                     turn_ctx.add_message(
                         role="system", content=_format_memory_note(caller)
