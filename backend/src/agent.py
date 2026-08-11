@@ -1,4 +1,5 @@
 import logging
+import random
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -110,7 +111,7 @@ class Assistant(Agent):
         Do NOT invoke this tool with assumed, placeholder, or invented values. Ask the caller first.
 
         Args:
-            scheme_id: Scheme identifier code (e.g., 'pmjdy', 'pmsby', 'pmjjby', 'apy', 'ssy', 'pm_kisan', 'pmmy').
+            scheme_id: Scheme identifier code or name (e.g., 'pmjdy', 'pmsby', 'pmjjby', 'apy', 'ssy', 'pm_kisan', 'pmmy').
             age: Caller's age in years (or girl child's age for SSY).
             annual_income: Caller's total annual household income in Indian Rupees (INR).
             is_taxpayer: True if the caller or spouse pays income tax; False otherwise.
@@ -139,7 +140,7 @@ class Assistant(Agent):
         Call this tool when the user asks what documents, papers, or ID proofs are required to open an account or apply for a specific scheme (e.g. PMJDY, SSY, APY, PM-KISAN, PMSBY, PMJJBY, PMMY).
 
         Args:
-            scheme_id: Scheme identifier code (e.g., 'pmjdy', 'pmsby', 'pmjjby', 'apy', 'ssy', 'pm_kisan', 'pmmy').
+            scheme_id: Scheme identifier code or name (e.g., 'pmjdy', 'pmsby', 'pmjjby', 'apy', 'ssy', 'pm_kisan', 'pmmy').
         """
         import json
 
@@ -170,38 +171,80 @@ async def my_agent(ctx: JobContext):
     # Initialize SQLite database
     db.init_db()
 
-    # Join the room and wait for the remote participant to get exact user_id
+    # Join the room and connect to LiveKit
     await ctx.connect()
-    participant = await ctx.wait_for_participant()
-    user_id = participant.identity if participant else "unknown_user"
 
-    logger.info(f"Active connection with user_id: {user_id}")
+    # Detect user identity and check if this is an outbound SIP call
+    user_id = "unknown_user"
+    is_sip = ctx.room.name.startswith("outbound_call_room")
 
-    instructions = (
-        f"{SYSTEM_PROMPT}\n\n"
-        f"CURRENT USER CALL INFO:\n"
-        f"- Current Caller User ID: {user_id}\n"
-        f"- IMPORTANT: You MUST immediately call `lookup_caller` at the very start of the conversation. "
-        f"If a record is returned, welcome the user back by name and reference their previous interaction "
-        f"(e.g. 'Namaste Ramesh, last time we spoke about Atal Pension Yojana. Did you check your eligibility?'). "
-        f"If no record is found, greet them as a new user."
-    )
+    try:
+        participant = await ctx.wait_for_participant()
+        if participant:
+            user_id = participant.identity
+            if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+                is_sip = True
+    except Exception as e:
+        logger.warning(f"Wait for participant timed out or failed: {e}")
 
-    # Set up a voice AI pipeline using Murf Falcon, Gemini 2.0 Flash, Deepgram, and the LiveKit turn detector
+    for p_identity, p_info in ctx.room.remote_participants.items():
+        if user_id == "unknown_user":
+            user_id = p_identity
+        if p_info.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+            is_sip = True
+        break
+
+    logger.info(f"Active connection with user_id: {user_id}, is_sip: {is_sip}")
+
+    schemes_list = [
+        "Pradhan Mantri Jan Dhan Yojana",
+        "Pradhan Mantri Suraksha Bima Yojana",
+        "Pradhan Mantri Jeevan Jyoti Bima Yojana",
+        "Atal Pension Yojana",
+        "Sukanya Samriddhi Yojana",
+    ]
+    selected_scheme = random.choice(schemes_list)
+
+    if is_sip:
+        instructions = (
+            f"{SYSTEM_PROMPT}\n\n"
+            "OUTBOUND CALL SCENARIO:\n"
+            "- Ignore any default returning caller logic. Do NOT check for returning caller facts or greet them by name at the start.\n"
+            "- IMPORTANT: You MUST strictly open the conversation with these first two sentences in English:\n"
+            "  1. 'Hello, this is Shreya calling from Jan Sahay.'\n"
+            f"  2. 'We found you eligible for the {selected_scheme} scheme, and the deadline is on August 15th, so hurry up! If you want to know more, say yes, and if you want to stop these calls, say no.'\n"
+            f"- If the user says 'yes', you must explain the eligibility criteria for ONLY the {selected_scheme} scheme in EXACTLY ONE SHORT SENTENCE (under 15 words). Do NOT explain any other schemes and do NOT use long paragraphs.\n"
+            "- IMPORTANT: To avoid speaking all at once, you MUST speak slowly and keep your responses extremely short (under 15 words).\n"
+            "- If the user says 'no', you must wrap up the call. If they ask how to stop these types of calls, reply exactly: 'To stop these calls, press or say 1.'\n"
+            "- Do not ask any questions during the main explanation.\n"
+            "- Do not say anything else in your opening turn. Wait for the user's response after this opening."
+        )
+    else:
+        instructions = (
+            f"{SYSTEM_PROMPT}\n\n"
+            f"CURRENT USER CALL INFO:\n"
+            f"- Current Caller User ID: {user_id}\n"
+            f"- IMPORTANT: You MUST immediately call `lookup_caller` at the very start of the conversation. "
+            f"If a record is returned, welcome the user back by name and reference their previous interaction "
+            f"(e.g. 'Namaste Ramesh, last time we spoke about Atal Pension Yojana. Did you check your eligibility?'). "
+            f"If no record is found, greet them as a new user."
+        )
+
+    # Set up a voice AI pipeline using Murf Falcon, Gemini, Deepgram, and the LiveKit turn detector
     session = AgentSession(
         stt=deepgram.STT(model="nova-3", language="multi"),
         llm=google.LLM(
-            model="gemini-3.5-flash",
+            model="gemini-2.0-flash",
         ),
         tts=murf.TTS(
-            voice="kn-IN-anisha",
+            voice="en-IN-anisha",
             style="Conversation",
             tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
             text_pacing=True,
         ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        preemptive_generation=True,
+        preemptive_generation=not is_sip,
     )
 
     @session.on("user_input_transcribed")
@@ -211,7 +254,7 @@ async def my_agent(ctx: JobContext):
             return
 
         # Check for Kannada script characters (native Kannada)
-        has_kannada = any(ord(c) >= 0x0C80 and ord(c) <= 0x0CFF for c in transcript)
+        has_kannada = any(0x0C80 <= ord(c) <= 0x0CFF for c in transcript)
 
         # Check for common Kannada keywords (Kannada script)
         kannada_keywords = {
@@ -260,6 +303,16 @@ async def my_agent(ctx: JobContext):
         ),
     )
 
+    if is_sip:
+        # Trigger the compliant 2-sentence opening greeting automatically for the outbound call
+        await session.say(
+            f"Hello, this is Sita calling from Jana Sahaya. "
+            f"We found you eligible for the {selected_scheme} scheme, and the deadline is on August 15th, so hurry up! "
+            f"If you want to know more, say yes, and if you want to stop these calls, say no.",
+            allow_interruptions=True,
+        )
+
 
 if __name__ == "__main__":
     cli.run_app(server)
+
