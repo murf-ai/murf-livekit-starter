@@ -24,7 +24,7 @@ murf-livekit-starter/
 - **LiveKit Agents SDK** (`livekit-agents ~1.4`) — voice AI agent framework
 - **Murf Falcon** (`livekit-murf`) — text-to-speech
 - **Deepgram Nova-3** — speech-to-text
-- **Google Gemini** — LLM
+- **NVIDIA Nemotron-3-Nano-30B** (via OpenAI-compatible Integrate API) — LLM
 - **Silero VAD** + **LiveKit Turn Detector** — voice activity and turn detection
 
 ### Key file: `backend/src/agent.py`
@@ -115,7 +115,21 @@ Edit the `voice` argument in `murf.TTS(...)` in `backend/src/agent.py`. Browse v
 Add a method to the `Assistant` class in `backend/src/agent.py` with the `@function_tool` decorator. There's a commented example (weather lookup) in the file. Import `function_tool` and `RunContext` from `livekit.agents`.
 
 ### Switch the LLM
-Replace the `llm=google.LLM(...)` call in `agent.py`. For OpenAI: install `livekit-agents[openai]`, set `OPENAI_API_KEY`, import `openai` from `livekit.plugins`, and use `openai.LLM(...)`.
+Replace the `llm=...` call in `agent.py` with NVIDIA Nemotron (OpenAI-compatible Integrate API):
+
+```python
+from livekit.plugins import openai
+
+nvidia_llm = openai.LLM(
+    model="nvidia/nemotron-3-nano-30b-a3b",
+    api_key=os.environ["OPENAI_API_KEY"],
+    base_url="https://integrate.api.nvidia.com/v1",
+    temperature=0.6,
+    max_completion_tokens=1024,
+)
+```
+
+Set `OPENAI_API_KEY` to your nvapi key in `.env.local`.
 
 ### Change frontend branding
 Edit `frontend/app-config.ts` — company name, page title, logo paths, accent colors, button text, visualizer type.

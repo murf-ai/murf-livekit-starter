@@ -195,9 +195,23 @@ export function AgentSessionView_01({
   };
 
   // Latest non-empty agent message for always-on subtitles when chat is collapsed.
+  // Skip internal locks / meta chain-of-thought if any leak through.
   const latestAgentSubtitle = [...messages]
     .reverse()
-    .find((m) => m.from?.isLocal !== true && Boolean(m.message?.trim()))?.message;
+    .find((m) => {
+      if (m.from?.isLocal === true) return false;
+      const t = m.message?.trim() ?? '';
+      if (!t) return false;
+      if (
+        t.startsWith('[[LANG_LOCK]]') ||
+        t.startsWith('[[HIDDEN_LANG_LOCK]]') ||
+        t.startsWith('[[CALLER_MEMORY]]')
+      ) {
+        return false;
+      }
+      if (/we need to respond|as per policy|the user asks/i.test(t)) return false;
+      return true;
+    })?.message;
 
   useEffect(() => {
     const lastMessage = messages.at(-1);

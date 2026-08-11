@@ -45,16 +45,35 @@ export interface AgentChatTranscriptProps extends ComponentProps<'div'> {
  * />
  * ```
  */
+/** Hide internal locks / chain-of-thought that should never appear in the UI. */
+function isInternalOrMetaMessage(text: string | undefined): boolean {
+  if (!text) return true;
+  const t = text.trim();
+  if (
+    t.startsWith('[[LANG_LOCK]]') ||
+    t.startsWith('[[HIDDEN_LANG_LOCK]]') ||
+    t.startsWith('[[CALLER_MEMORY]]')
+  ) {
+    return true;
+  }
+  // Nemotron sometimes narrates instructions instead of answering.
+  const meta =
+    /we need to respond|as per policy|the user asks|never narrate|language now:|reply in hindi only|speak only the final/i;
+  return meta.test(t);
+}
+
 export function AgentChatTranscript({
   agentState,
   messages = [],
   className,
   ...props
 }: AgentChatTranscriptProps) {
+  const visibleMessages = messages.filter((m) => !isInternalOrMetaMessage(m.message));
+
   return (
     <Conversation className={className} {...props}>
       <ConversationContent>
-        {messages.map((receivedMessage) => {
+        {visibleMessages.map((receivedMessage) => {
           const { id, timestamp, from, message } = receivedMessage;
           const locale = navigator?.language ?? 'en-US';
           const messageOrigin = from?.isLocal ? 'user' : 'assistant';

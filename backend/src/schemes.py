@@ -586,3 +586,127 @@ def get_scheme_overview(scheme_name: str) -> dict[str, Any]:
         ),
         **meta,
     }
+
+
+# Day 6 — renewal / enrolment windows used for outbound deadline outreach.
+# PMSBY / PMJJBY renew around 1 June each year (bank auto-debit).
+SCHEME_DEADLINES: dict[str, dict[str, Any]] = {
+    "pmsby": {
+        "kind": "annual_renewal",
+        "deadline_label_en": "1 June (annual premium auto-debit)",
+        "deadline_label_hi": "1 जून (वार्षिक प्रीमियम ऑटो-डेबिट)",
+        "action_en": (
+            "Keep enough balance in your savings account so the ~₹20 premium "
+            "can auto-debit, or re-enrol at your bank branch / BC before cover lapses."
+        ),
+        "action_hi": (
+            "बचत खाते में पर्याप्त बैलेंस रखें ताकि लगभग ₹20 प्रीमियम ऑटो-डेबिट हो सके, "
+            "या कवर टूटने से पहले बैंक / BC पर दोबारा नामांकन करवाएँ।"
+        ),
+    },
+    "pmjjby": {
+        "kind": "annual_renewal",
+        "deadline_label_en": "1 June (annual premium auto-debit)",
+        "deadline_label_hi": "1 जून (वार्षिक प्रीमियम ऑटो-डेबिट)",
+        "action_en": (
+            "Keep balance for the ~₹436 premium auto-debit, or renew at your bank "
+            "before cover lapses. Join only up to age 50; cover can continue to 55."
+        ),
+        "action_hi": (
+            "लगभग ₹436 प्रीमियम के लिए बैलेंस रखें, या कवर टूटने से पहले बैंक पर रिन्यू करें। "
+            "जॉइन उम्र 50 तक; कवर 55 तक जारी रह सकता है।"
+        ),
+    },
+    "apy": {
+        "kind": "contribution_continuity",
+        "deadline_label_en": "monthly contribution due date (bank auto-debit)",
+        "deadline_label_hi": "मासिक योगदान की तारीख (बैंक ऑटो-डेबिट)",
+        "action_en": (
+            "Keep account funded for the monthly APY contribution so pension "
+            "credits stay on track. Confirm amount at your bank."
+        ),
+        "action_hi": (
+            "मासिक APY योगदान के लिए खाते में राशि रखें ताकि पेंशन क्रेडिट सही रहे। "
+            "राशि बैंक से कन्फर्म करें।"
+        ),
+    },
+    "pmjdy": {
+        "kind": "activation_followup",
+        "deadline_label_en": "complete KYC / RuPay activation soon after opening",
+        "deadline_label_hi": "खाता खोलने के बाद जल्द KYC / RuPay सक्रिय करें",
+        "action_en": (
+            "If your Jan Dhan account is new, finish KYC at the branch and "
+            "activate the RuPay card so accident cover features can apply."
+        ),
+        "action_hi": (
+            "यदि जन धन खाता नया है, ब्रांच पर KYC पूरा करें और RuPay कार्ड सक्रिय करें "
+            "ताकि दुर्घटना कवर सुविधाएँ लागू हो सकें।"
+        ),
+    },
+}
+
+
+def get_scheme_deadline_reminder(
+    scheme_name: str,
+    *,
+    caller_name: str | None = None,
+    language: str = "hi",
+) -> dict[str, Any]:
+    """Build a spoken deadline reminder for a previously eligible caller (Day 6)."""
+    meta = _meta()
+    code = resolve_scheme_code(scheme_name)
+    if not code:
+        return {
+            "ok": False,
+            "error": "unknown_scheme",
+            "message": (
+                f"Unknown scheme '{scheme_name}'. "
+                f"Supported: {', '.join(list_supported_schemes())}."
+            ),
+            "supported_schemes": list_supported_schemes(),
+            **meta,
+        }
+    scheme = SCHEMES[code]
+    deadline = SCHEME_DEADLINES.get(code)
+    if not deadline:
+        return {
+            "ok": False,
+            "error": "no_deadline",
+            "message": f"No deadline reminder configured for {scheme['short_name']}.",
+            **meta,
+        }
+
+    lang = "hi" if (language or "hi").lower().startswith("hi") else "en"
+    label = deadline["deadline_label_hi" if lang == "hi" else "deadline_label_en"]
+    action = deadline["action_hi" if lang == "hi" else "action_en"]
+    name = (caller_name or "").strip() or ("आप" if lang == "hi" else "you")
+    short = scheme["short_name"]
+    full = scheme["full_name"] if lang == "en" else scheme.get("hindi_name", short)
+
+    if lang == "hi":
+        speak = (
+            f"{name}, हमारी पिछली बातचीत में आप {short} ({full}) के लिए संभावित रूप से "
+            f"पात्र लगे थे। याद दिलाना: समय सीमा / रिन्यूअल — {label}। {action} "
+            f"यह मार्गदर्शन है, बैंक या सरकार मंज़ूरी तय करती है। आँकड़े {DATA_AS_OF}।"
+        )
+    else:
+        speak = (
+            f"{name}, in our earlier chat you looked likely eligible for {short} "
+            f"({full}). Reminder: deadline / renewal is {label}. {action} "
+            f"This is guidance only — the bank or government decides. "
+            f"Figures as of {DATA_AS_OF}."
+        )
+
+    return {
+        "ok": True,
+        "scheme_code": code,
+        "scheme_short_name": short,
+        "scheme_full_name": scheme["full_name"],
+        "deadline_kind": deadline["kind"],
+        "deadline_label": label,
+        "action": action,
+        "caller_name": name,
+        "language": lang,
+        "speak_summary": speak,
+        **meta,
+    }

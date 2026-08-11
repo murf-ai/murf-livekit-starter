@@ -1,6 +1,6 @@
 # Backend — Voice Agent with Murf Falcon TTS
 
-The Python backend for the Voice Agent Starter. It runs a real-time voice AI pipeline using [LiveKit Agents](https://docs.livekit.io/agents), connecting Murf Falcon TTS, Deepgram STT, and Google Gemini into a single conversational agent.
+The Python backend for the Voice Agent Starter. It runs a real-time voice AI pipeline using [LiveKit Agents](https://docs.livekit.io/agents), connecting Murf Falcon TTS, Deepgram STT, and NVIDIA Nemotron (via OpenAI-compatible API) into a single conversational agent.
 
 ## How It Works
 
@@ -171,10 +171,10 @@ stt=deepgram.STT(model="nova-3")
 
 ### LLM
 
-Default is Google Gemini. To switch:
+Default is **NVIDIA Nemotron-3-Nano-30B** (via OpenAI-compatible Integrate API). To switch back to Gemini:
 
-- **Gemini (default):** Set `GOOGLE_API_KEY` in `.env.local`
-- **OpenAI:** Set `OPENAI_API_KEY`, install `livekit-agents[openai]`, and change the `llm=` argument
+- **NVIDIA (default):** Set `OPENAI_API_KEY` (nvapi-...) in `.env.local`
+- **Gemini:** Set `GOOGLE_API_KEY` in `.env.local`
 
 ## Testing
 

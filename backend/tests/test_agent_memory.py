@@ -27,7 +27,7 @@ async def test_agent_lookup_and_save_tool(temp_db, monkeypatch):
         ctx=None,
         name="Ramesh",
         language_preference="hi",
-        facts={"schemes_checked": ["PMJDY", "PMSBY"], "eligible_age": True},
+        facts=json.dumps({"schemes_checked": ["PMJDY", "PMSBY"], "eligible_age": True}),
     )
     save_res = json.loads(save_res_str)
     assert save_res["saved"] is True
@@ -76,3 +76,24 @@ def test_language_detection():
     )
     assert agent.detect_reply_language("What is PMJDY eligibility?", None) == "en"
     assert agent.detect_reply_language("PMJDY kya hai batao", None) == "hi"
+
+
+def test_name_extraction_stopwords():
+    # Non-name phrases must return None (not extract "Conversation", "Details", "Schemes")
+    assert agent.extract_caller_name("no please save the conversation") is None
+    assert agent.extract_caller_name("tell me about government schemes") is None
+    assert agent.extract_caller_name("save details for me") is None
+    assert agent.extract_caller_name("how to open a bank account") is None
+
+    # Valid name extractions
+    assert agent.extract_caller_name("My name is Raj") == "Raj"
+    assert agent.extract_caller_name("Mera naam Priya hai") == "Priya"
+    assert agent.extract_caller_name("Save it under Amit Kumar") == "Amit Kumar"
+
+
+def test_passive_memory_note_format():
+    caller = {"name": "Raj", "facts": {"schemes_checked": ["PMJDY"]}}
+    note = agent._format_passive_memory(caller)
+    assert "CALLER_CONTEXT" in note
+    assert "Do NOT say welcome back again" in note
+    assert "Raj" in note

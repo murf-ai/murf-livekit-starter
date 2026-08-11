@@ -1,0 +1,8 @@
+{
+  "trunk": {
+    "name": "linphone-trunk",
+    "address": "sip.linphone.org",
+    "transport": "SIP_TRANSPORT_TLS",
+    "numbers": ["sip:REPLACE_WITH_LINPHONE_USERNAME"]
+  }
+}
