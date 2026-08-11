@@ -512,14 +512,14 @@ def extract_caller_name(text: str) -> str | None:
 
 
 def _format_memory_note(caller: dict) -> str:
-    """System note for a returning caller on initial contact."""
+    """System note for a returning caller on a NEW call session."""
     name = caller.get("name") or caller.get("user_id") or "caller"
     facts = caller.get("facts") or {}
     last_topic = facts.get("last_topic") or "government schemes"
     return (
-        f"{_MEMORY_PREFIX} RETURNING_CALLER (first turn only): name={name}; last_topic={last_topic}. "
-        f"Say: 'Hey {name}! Nice to talk to you again. Last time we talked about {last_topic}. How can I help you today?' "
-        f"Do NOT say you just saved anything. Keep under 20 words."
+        f"{_MEMORY_PREFIX} RETURNING_CALLER (new call only): name={name}; last_topic={last_topic}. "
+        f"Say: 'Hello {name}, it\\'s great to see you again! I remember we were talking about {last_topic}. How can I help you today?' "
+        f"Do NOT say you just saved anything. Keep under 25 words."
     )
 
 
@@ -538,14 +538,11 @@ def _format_passive_memory(caller: dict) -> str:
 
 
 def _save_confirm_line(name: str, lang: str) -> str:
-    """Spoken confirmation after save — exact format requested."""
+    """Spoken confirmation after save — exact requested string."""
     clean = (name or "there").strip() or "there"
     if (lang or "hi").lower().startswith("hi"):
-        return (
-            f"Dhanyavad {clean}! Maine aapki baatcheet save kar li hai, "
-            f"aapse baat karke accha laga."
-        )
-    return f"Thank you {clean}! I have saved the conversation, nice to talk to you."
+        return f"Dhanyavad {clean}! Maine aapki baatcheet save kar li hai."
+    return f"Thank you {clean}! I have saved the conversation."
 
 
 def _format_just_saved_note(name: str, lang: str) -> str:
@@ -553,7 +550,7 @@ def _format_just_saved_note(name: str, lang: str) -> str:
     return (
         f"{_MEMORY_PREFIX} JUST_SAVED: Saved under {name}. "
         f'Speak ONLY this confirmation once: "{line}" '
-        f"Do NOT say welcome back. Do NOT re-introduce. Then wait for next question."
+        f"Do NOT say welcome back. Do NOT mention past topics. Wait for next user question."
     )
 
 
@@ -895,33 +892,13 @@ class Assistant(Agent):
         if not name:
             return
 
-        existing = db.get_caller(name)
-        if existing:
-            self._known_caller_name = existing.get("name") or name
-            self._memory_loaded = True
-            _strip_lang_locks(turn_ctx)
-            if not self._welcomed_this_session:
-                self._welcomed_this_session = True
-                turn_ctx.add_message(
-                    role="system", content=_format_memory_note(existing)
-                )
-            else:
-                turn_ctx.add_message(
-                    role="system", content=_format_passive_memory(existing)
-                )
-            db.save_caller(
-                user_id=existing["user_id"],
-                name=existing.get("name") or name,
-                language_preference=existing.get("language_preference")
-                or self._reply_lang,
-                facts={},
-                consent_given=True,
-            )
-            logger.info("Auto-loaded returning caller memory for %s", name)
-            return
-
-        # Only auto-save first-time name if user explicitly expressed save intent with a valid name
-        if _wants_save(text):
+        # Priority 1: User explicitly asked to save or is providing name to save
+        if (
+            _wants_save(text)
+            or self._saved_this_session
+            or "my name is" in text_lower
+            or "mera naam" in text_lower
+        ):
             user_id = name.lower().replace(" ", "_")
             res = db.save_caller(
                 user_id=user_id,
@@ -930,17 +907,34 @@ class Assistant(Agent):
                 facts={
                     "introduced_via": "auto_name_detect",
                     "saved_conversation": True,
+                    "last_topic": self._last_user_topic,
                 },
                 consent_given=True,
             )
             self._known_caller_name = name
             self._memory_loaded = True
             self._saved_this_session = True
+            _strip_lang_locks(turn_ctx)
             turn_ctx.add_message(
                 role="system",
                 content=_format_just_saved_note(name, self._reply_lang),
             )
-            logger.info("Auto-saved new caller profile for %s: %s", name, res)
+            logger.info("Auto-saved caller profile for %s: %s", name, res)
+            return
+
+        # Priority 2: Returning caller on a NEW call session (not saving current session)
+        if not self._saved_this_session and not self._welcomed_this_session:
+            existing = db.get_caller(name)
+            if existing:
+                self._known_caller_name = existing.get("name") or name
+                self._memory_loaded = True
+                self._welcomed_this_session = True
+                _strip_lang_locks(turn_ctx)
+                turn_ctx.add_message(
+                    role="system", content=_format_memory_note(existing)
+                )
+                logger.info("Auto-loaded returning caller memory for %s", name)
+                return
 
     def note_stt_language(self, language: str | None, transcript: str) -> None:
         if language:
