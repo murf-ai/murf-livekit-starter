@@ -103,7 +103,7 @@ def test_passive_memory_note_format():
 async def test_was_welcomed_before_turn_logic(temp_db, monkeypatch):
     monkeypatch.setattr(db, "DEFAULT_DB_PATH", temp_db)
     assistant = agent.Assistant()
-    
+
     # 1. Setup caller in DB
     db.save_caller(
         user_id="raj",
@@ -112,33 +112,34 @@ async def test_was_welcomed_before_turn_logic(temp_db, monkeypatch):
         facts={"last_topic": "Fixed Deposits"},
         consent_given=True,
     )
-    
+
     class MockMessage:
         def __init__(self, content):
             self.text_content = content
             self.role = "user"
-            
+
     class MockChatContext:
         def __init__(self):
             self.messages = []
             self.items = []
-            
+
         def add_message(self, role, content):
             self.messages.append({"role": role, "content": content})
-            
+
     # Mock apply_language to avoid TTS session lookup errors
     async def mock_apply_language(*args, **kwargs):
         return "en"
+
     monkeypatch.setattr(assistant, "apply_language", mock_apply_language)
-    
+
     # Turn 1: Caller says "I am Raj" on a new call
     ctx = MockChatContext()
     msg = MockMessage("I am Raj")
     await assistant.on_user_turn_completed(ctx, msg)
-    
+
     # Verify that self._welcomed_this_session became True
     assert assistant._welcomed_this_session is True
-    
+
     # Verify that the RETURNING_CALLER system note was added, but passive context was NOT added in this first turn
     returning_notes = [m for m in ctx.messages if "RETURNING_CALLER" in m["content"]]
     passive_notes = [m for m in ctx.messages if "CALLER_CONTEXT" in m["content"]]
@@ -146,12 +147,12 @@ async def test_was_welcomed_before_turn_logic(temp_db, monkeypatch):
     assert len(passive_notes) == 0
     assert "Welcome back Raj!" in returning_notes[0]["content"]
     assert "Fixed Deposits" in returning_notes[0]["content"]
-    
+
     # Turn 2: Caller says "What is PMJDY?"
     ctx2 = MockChatContext()
     msg2 = MockMessage("What is PMJDY?")
     await assistant.on_user_turn_completed(ctx2, msg2)
-    
+
     # Verify that now the passive context is added, and the returning caller note is NOT added
     returning_notes2 = [m for m in ctx2.messages if "RETURNING_CALLER" in m["content"]]
     passive_notes2 = [m for m in ctx2.messages if "CALLER_CONTEXT" in m["content"]]
@@ -159,3 +160,53 @@ async def test_was_welcomed_before_turn_logic(temp_db, monkeypatch):
     assert len(passive_notes2) == 1
     assert "Do NOT say welcome back again" in passive_notes2[0]["content"]
 
+
+@pytest.mark.asyncio
+async def test_direct_save_when_caller_known(temp_db, monkeypatch):
+    monkeypatch.setattr(db, "DEFAULT_DB_PATH", temp_db)
+    assistant = agent.Assistant()
+    assistant._known_caller_name = "Ayan"
+    assistant._reply_lang = "en"
+
+    # Mock say() so we can assert the spoken confirmation and avoid actual LiveKit session lookups
+    spoken_phrases = []
+
+    class MockSession:
+        async def say(self, text, allow_interruptions=True):
+            spoken_phrases.append(text)
+
+    # Mock the session property on Assistant class
+    monkeypatch.setattr(
+        agent.Assistant, "session", property(lambda self: MockSession())
+    )
+
+    class MockMessage:
+        def __init__(self, content):
+            self.text_content = content
+            self.role = "user"
+
+    class MockChatContext:
+        def __init__(self):
+            self.messages = []
+
+        def add_message(self, role, content):
+            self.messages.append({"role": role, "content": content})
+
+    # Mock apply_language
+    async def mock_apply_language(*args, **kwargs):
+        return "en"
+
+    monkeypatch.setattr(assistant, "apply_language", mock_apply_language)
+
+    # User says "Can you save the conversation?"
+    ctx = MockChatContext()
+    msg = MockMessage("Can you save the conversation?")
+
+    with pytest.raises(agent.StopResponse):
+        await assistant.on_user_turn_completed(ctx, msg)
+
+    # Verify that it saved under Ayan immediately and did NOT ask for a name
+    assert assistant._saved_this_session is True
+    assert assistant._awaiting_name_for_save is False
+    assert len(spoken_phrases) == 1
+    assert "Thank you Ayan! I have saved the conversation." in spoken_phrases[0]

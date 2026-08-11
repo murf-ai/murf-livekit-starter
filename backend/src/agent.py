@@ -1166,7 +1166,7 @@ class Assistant(Agent):
                 raise StopResponse()
 
         if _wants_save(text_clean):
-            name = extract_caller_name(text)
+            name = extract_caller_name(text) or self._known_caller_name
             if name:
                 user_id = name.lower().replace(" ", "_")
                 db.save_caller(
