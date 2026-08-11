@@ -32,7 +32,7 @@ Fill in your LiveKit credentials (same project as the backend):
 LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=your_key
 LIVEKIT_API_SECRET=your_secret
-AGENT_NAME=my-agent
+AGENT_NAME=mitra
 ```
 
 ### 3. Run

@@ -99,7 +99,7 @@ Backend variables:
 | `CALLER_MEMORY_DB` | Optional custom path for the caller-memory SQLite database |
 | `CATALOGUE_API_URL` | Catalogue endpoint; defaults to `http://127.0.0.1:8001/catalogue` |
 
-The frontend needs the same `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET`. Set `AGENT_NAME=my-agent` for explicit dispatch; leaving it empty uses automatic dispatch.
+The frontend needs the same `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET`. Set `AGENT_NAME=mitra` for explicit dispatch; leaving it empty uses automatic dispatch.
 
 Never commit `.env.local` files or real credentials.
 
@@ -189,7 +189,7 @@ To stop it, press `Ctrl+C` in its terminal. Start it again with `cd backend` fol
 
 - Caller memory is persisted in `backend/data/callers.sqlite3` by default.
 - `CALLER_MEMORY_DB` can point to another SQLite file.
-- Orders and khata entries currently live in the agent instance's memory. They are demonstration records and are not persisted across restarts.
+- Orders and khata entries currently live in the agent instance's memory. They are sample records and are not persisted across restarts.
 - Catalogue stock is sample data and is not reduced when an order request is recorded.
 - Mitra records order requests only; payment and final seller confirmation happen outside this application.
 
@@ -214,6 +214,87 @@ pnpm lint
 pnpm format:check
 pnpm build
 ```
+
+## Day 6 — Twilio Outbound Calling
+
+The **Call Customer** card uses LiveKit `CreateSIPParticipant` with a stored Twilio
+Elastic SIP outbound trunk. LiveKit creates the room, dispatches `mitra`, and originates
+the PSTN call through Twilio. The existing pipeline continues to use Deepgram, Gemini,
+and Murf Falcon.
+
+```mermaid
+flowchart LR
+    UI[Local Commerce order] --> API[Backend]
+    API --> LK[LiveKit room + Mitra dispatch]
+    LK --> SIP[LiveKit CreateSIPParticipant]
+    SIP --> TW[Twilio Elastic SIP trunk]
+    TW -->|PSTN| Phone[Customer mobile]
+    Phone <--> Agent[Mitra + Murf Falcon]
+```
+
+### Configure Twilio
+
+Create a Twilio account, obtain the Account SID and Auth Token, and configure a
+voice-capable Twilio phone number. Trial accounts must verify the destination number.
+All phone numbers use international E.164 format. Put these values in
+`frontend/.env.local`; never prefix them with `NEXT_PUBLIC_`:
+
+```env
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_PHONE_NUMBER=+1XXXXXXXXXX
+TWILIO_TO_NUMBER=+91XXXXXXXXXX
+# Retained LiveKit project SIP endpoint
+LIVEKIT_SIP_URI=
+LIVEKIT_SIP_OUTBOUND_TRUNK_ID=
+
+ORDER_CUSTOMER_NAME=Shivam
+ORDER_ID=ORD-1001
+ORDER_ITEMS=1 x Amul Taaza Milk, 1 litre pouch, INR 68, seller Sharma General Store|1 x Britannia Brown Bread, 400 gram loaf, INR 45, seller Sharma General Store|1 x Homemade Mango Pickle, 500 gram jar, INR 240, seller Asha Foods
+ORDER_TOTAL_INR=353
+ORDER_DELIVERY_TIME=Today, 6 PM-8 PM
+```
+
+Twilio credentials remain server-side. Phone numbers are masked in structured logs. The
+LiveKit outbound trunk stores the Twilio termination hostname and its dedicated SIP
+credential; the application references only `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` at runtime.
+
+### Twilio and LiveKit trunk setup
+
+In Twilio Elastic SIP Trunking, create a termination domain, attach a credential list,
+and associate the voice-capable Twilio number. Create one matching LiveKit outbound
+trunk using the Twilio termination hostname, caller-ID number, destination country, and
+the same credential. Reuse its ID for all calls. Programmable Voice webhooks and ngrok
+are not part of this outbound path.
+
+### Run and test the call
+
+1. Start the backend agent, catalogue API, and frontend using the normal commands above.
+2. Confirm the Twilio Elastic SIP termination trunk and LiveKit outbound trunk are active.
+3. Open `http://localhost:3000` and select **Call Customer**.
+4. Answer the mobile call and confirm, decline, hang up, or say "stop".
+
+Automated tests never place a real Twilio call. No automatic retry is performed after
+busy, no-answer, hang-up, or opt-out outcomes.
+
+### Outbound outcome and retry rules
+
+| Outcome | Behaviour | Retry rule |
+| --- | --- | --- |
+| Busy | Show `Busy` and end the attempt | Permit one manual retry after 5 minutes |
+| No answer | Show `No answer` and end the attempt | Permit one manual retry after 30 minutes |
+| Immediate hang-up | A completed call lasting at most 5 seconds without confirmation is marked `USER_HANGUP` | No automatic retry; manual review is required |
+
+The server enforces the delay and one-retry limit for busy and no-answer calls. It
+rejects repeated button clicks that violate these rules.
+
+### Troubleshooting
+
+- **Mobile does not ring:** Check Voice capability, E.164 numbers, trial verification,
+  geographic permissions, account balance, and Twilio call logs.
+- **Call connects but no audio:** Check the LiveKit outbound trunk, Twilio termination
+  credentials, the `mitra` dispatch, and the SIP participant disconnect reason.
+- **Murf voice does not play:** Check `MURF_API_KEY` and the existing TTS configuration.
 
 ## Customization
 
@@ -257,7 +338,7 @@ murf-livekit-starter/
 
 ## Deployment
 
-Deploy the backend as a long-running Python worker and the frontend as a Next.js application. Both services must use the same LiveKit project credentials. In the deployed frontend, set `AGENT_NAME=my-agent` so sessions are dispatched to the agent registered in `backend/src/agent.py`.
+Deploy the backend as a long-running Python worker and the frontend as a Next.js application. Both services must use the same LiveKit project credentials. In the deployed frontend, set `AGENT_NAME=mitra` so sessions are dispatched to the agent registered in `backend/src/agent.py`.
 
 For production use, replace the sample catalogue, inventory, order, and khata implementations with authenticated persistent services. Store the SQLite database on a persistent volume or migrate caller memory to a managed database.
 

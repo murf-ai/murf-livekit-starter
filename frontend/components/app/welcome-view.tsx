@@ -10,6 +10,7 @@ import {
   TruckIcon,
 } from 'lucide-react';
 import { CatalogueCards } from '@/components/app/catalogue-cards';
+import { OutboundCallCard } from '@/components/app/outbound-call-card';
 import { Button } from '@/components/ui/button';
 
 function MitraMark() {
@@ -129,6 +130,7 @@ export const WelcomeView = ({
           </p>
         </div>
       </section>
+      <OutboundCallCard />
       <CatalogueCards />
     </div>
   );

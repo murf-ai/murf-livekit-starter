@@ -1,6 +1,9 @@
 import asyncio
+import json
 import logging
 import os
+import urllib.error
+import urllib.request
 from collections.abc import Callable
 
 from dotenv import load_dotenv
@@ -177,6 +180,27 @@ FIRST_TURN_GREETING = (
     "products, check listed prices, or prepare order requests. How may I help?"
 )
 
+OUTBOUND_CALL_PROMPT = """IDENTITY
+You are Mitra, an AI calling assistant for a local-commerce marketplace. You are on
+an outbound call solely to confirm the order details supplied in the call context.
+
+RULES
+- Clearly identify yourself as an AI assistant, explain the order-confirmation reason,
+  and explain that the customer can say "stop" to prevent future calls.
+- Never invent or change the customer, order, items, or delivery window.
+- Confirmation has two mandatory, separate steps. First read every item and ask whether
+  the item list is correct. Only after an explicit yes, call confirm_order_items.
+- Then state the delivery window and ask whether that delivery window is acceptable.
+  Only after a second explicit yes, call confirm_delivery_window.
+- Never combine the two questions or treat one yes as approval for both steps.
+- Only after confirm_delivery_window succeeds, say the order is confirmed and end politely.
+- If the customer says stop, do not continue the order conversation. Acknowledge the
+  opt-out, say there will be no automatic retry, and end politely.
+- If the customer declines or sounds uncertain, acknowledge it without persuasion.
+- Never ask for payment details, an OTP, PIN, password, or bank information.
+- Use one or two short spoken sentences at a time with no markdown or bullet points.
+"""
+
 HINDI_SCRIPT_RANGE = range(0x0900, 0x0980)
 ROMANIZED_HINDI_WORDS = {
     "aap",
@@ -294,8 +318,10 @@ class Assistant(Agent):
         memory_store: CallerMemoryStore | None = None,
         knowledge_base: KnowledgeBase | None = None,
         catalogue_provider: Callable[[], Catalogue] | None = None,
+        instructions: str = SYSTEM_PROMPT,
+        outbound_context: dict | None = None,
     ) -> None:
-        super().__init__(instructions=SYSTEM_PROMPT)
+        super().__init__(instructions=instructions)
         self.caller_id = caller_id
         database_path = os.getenv("CALLER_MEMORY_DB")
         self.memory_store = memory_store or (
@@ -303,8 +329,69 @@ class Assistant(Agent):
         )
         self.knowledge_base = knowledge_base or KnowledgeBase()
         self.catalogue_provider = catalogue_provider
+        self.outbound_context = outbound_context
+        self.outbound_items_confirmed = False
         self.orders: list[dict[str, str | int]] = []
         self.credit_entries: list[dict[str, str | int]] = []
+
+    @function_tool
+    async def confirm_order_items(self, context: RunContext) -> str:
+        """Record the first explicit yes confirming the complete outbound item list."""
+        del context
+        if not self.outbound_context:
+            return "Item confirmation is only available during an outbound order call."
+        self.outbound_items_confirmed = True
+        return (
+            "The item list is confirmed. Now state the delivery window and ask the "
+            "customer to confirm that window in a separate question."
+        )
+
+    @function_tool
+    async def confirm_delivery_window(self, context: RunContext) -> str:
+        """Confirm delivery after items and delivery each received a separate yes."""
+        del context
+        if not self.outbound_context:
+            return (
+                "Delivery confirmation is only available during an outbound order call."
+            )
+        if not self.outbound_items_confirmed:
+            return "Do not confirm the order: the item list has not been confirmed yet."
+        order_id = str(self.outbound_context.get("orderId", "")).strip()
+        callback_url = os.getenv(
+            "OUTBOUND_CALLBACK_URL",
+            "http://127.0.0.1:3000/api/outbound-call/outcome",
+        )
+        api_secret = os.getenv("LIVEKIT_API_SECRET", "")
+
+        def notify_frontend() -> None:
+            request = urllib.request.Request(
+                callback_url,
+                data=json.dumps({"orderId": order_id}).encode(),
+                headers={
+                    "Authorization": f"Bearer {api_secret}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=5) as response:
+                if response.status != 200:
+                    raise RuntimeError(f"Outcome callback returned {response.status}")
+
+        try:
+            await asyncio.to_thread(notify_frontend)
+        except (OSError, RuntimeError, urllib.error.URLError) as error:
+            logger.error(
+                "Failed to publish confirmation for order %s: %s", order_id, error
+            )
+            return (
+                "The delivery was accepted, but the confirmation could not be recorded. "
+                "Apologize and do not claim the order is confirmed."
+            )
+        logger.info("Outbound order %s confirmed after both approvals", order_id)
+        return (
+            f"Order {order_id} is confirmed. Tell the customer it is confirmed, repeat "
+            "the delivery window, thank them, and end politely."
+        )
 
     async def _catalogue(self):
         if self.catalogue_provider is not None:
@@ -668,7 +755,7 @@ def prewarm(proc: JobProcess):
 server.setup_fnc = prewarm
 
 
-@server.rtc_session(agent_name="my-agent")
+@server.rtc_session(agent_name="mitra")
 async def my_agent(ctx: JobContext):
     # Logging setup
     # Add any other context you want in all log entries here
@@ -679,7 +766,41 @@ async def my_agent(ctx: JobContext):
     # Connect first so the participant identity can key persistent caller memory.
     await ctx.connect()
     participant = await ctx.wait_for_participant()
-    assistant = Assistant(caller_id=participant.identity)
+    outbound_context = None
+    if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+        try:
+            metadata = json.loads(participant.metadata or "{}")
+            if metadata.get("type") == "outbound_order_confirmation":
+                outbound_context = metadata
+        except (json.JSONDecodeError, AttributeError):
+            logger.warning("Invalid outbound SIP participant metadata")
+        if outbound_context is None and os.getenv("ORDER_ID"):
+            outbound_context = {
+                "type": "outbound_order_confirmation",
+                "customerName": os.getenv("ORDER_CUSTOMER_NAME", "Customer"),
+                "orderId": os.getenv("ORDER_ID", ""),
+                "orderItems": [
+                    item.strip()
+                    for item in os.getenv("ORDER_ITEMS", "").split("|")
+                    if item.strip()
+                ],
+                "orderTotal": os.getenv("ORDER_TOTAL_INR", ""),
+                "deliveryTime": os.getenv("ORDER_DELIVERY_TIME", ""),
+            }
+    assistant = Assistant(
+        caller_id=participant.identity,
+        outbound_context=outbound_context,
+        instructions=(
+            f"{OUTBOUND_CALL_PROMPT}\n\nCALL CONTEXT\n"
+            f"Customer: {outbound_context.get('customerName')}\n"
+            f"Order ID: {outbound_context.get('orderId')}\n"
+            f"Items: {', '.join(outbound_context.get('orderItems', []))}\n"
+            f"Total: INR {outbound_context.get('orderTotal')}\n"
+            f"Delivery: {outbound_context.get('deliveryTime')}"
+            if outbound_context
+            else SYSTEM_PROMPT
+        ),
+    )
     caller_memory = assistant.memory_store.lookup(participant.identity)
 
     # Set up a voice AI pipeline using Murf Falcon, Gemini, Deepgram, and the LiveKit turn detector
@@ -744,11 +865,24 @@ async def my_agent(ctx: JobContext):
         ),
     )
 
-    greeting = (
-        _returning_caller_greeting(caller_memory)
-        if caller_memory is not None
-        else FIRST_TURN_GREETING
-    )
+    if outbound_context:
+        greeting = (
+            "Hi, this is Mitra, an AI calling assistant from FreshMart. "
+            "I'm calling to confirm your grocery order scheduled for delivery today. "
+            "If you don't want to receive calls like this, just say stop at any time. "
+            f"The order contains {', '.join(outbound_context['orderItems'])}. "
+            f"The complete order total is INR {outbound_context['orderTotal']}. "
+            "Are all of these items correct?"
+        )
+        logger.info(
+            "Outbound conversation started for order %s", outbound_context["orderId"]
+        )
+    else:
+        greeting = (
+            _returning_caller_greeting(caller_memory)
+            if caller_memory is not None
+            else FIRST_TURN_GREETING
+        )
     await session.say(greeting, allow_interruptions=True)
 
 

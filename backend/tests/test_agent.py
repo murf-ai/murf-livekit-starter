@@ -526,6 +526,39 @@ async def test_collects_order_details() -> None:
 
 
 @pytest.mark.asyncio
+async def test_outbound_delivery_cannot_confirm_before_items() -> None:
+    assistant = Assistant(outbound_context={"orderId": "ORD-1001"})
+
+    result = await assistant.confirm_delivery_window(None)
+
+    assert "item list has not been confirmed" in result
+
+
+@pytest.mark.asyncio
+async def test_outbound_two_step_confirmation_updates_frontend(monkeypatch) -> None:
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(
+        "agent.urllib.request.urlopen", lambda *args, **kwargs: Response()
+    )
+    monkeypatch.setenv("LIVEKIT_API_SECRET", "test-secret")
+    assistant = Assistant(outbound_context={"orderId": "ORD-1001"})
+
+    items_result = await assistant.confirm_order_items(None)
+    delivery_result = await assistant.confirm_delivery_window(None)
+
+    assert "item list is confirmed" in items_result.casefold()
+    assert "order ord-1001 is confirmed" in delivery_result.casefold()
+
+
+@pytest.mark.asyncio
 async def test_reports_mustard_oil_stock() -> None:
     """The assistant grounds stock answers in the business inventory tool."""
     async with (

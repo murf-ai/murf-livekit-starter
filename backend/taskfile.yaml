@@ -30,7 +30,7 @@ tasks:
       - test -z "$LIVEKIT_AGENT_NAME"
     cmds:
       - |
-        old='agent_name="my-agent"'
+        old='agent_name="mitra"'
         new='agent_name="{{ .LIVEKIT_AGENT_NAME }}"'
         file="{{ .PYTHON_MAIN }}"
         tmp="$(mktemp)"
