@@ -1,65 +1,198 @@
 import { Button } from '@/components/ui/button';
+import { ShieldCheck, PhoneCall, RefreshCw, AlertTriangle } from 'lucide-react';
+import { motion } from 'motion/react';
 
-function WelcomeImage() {
-  return (
-    <svg
-      width="64"
-      height="64"
-      viewBox="0 0 64 64"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="text-fg0 mb-4 size-16"
-    >
-      <path
-        d="M15 24V40C15 40.7957 14.6839 41.5587 14.1213 42.1213C13.5587 42.6839 12.7956 43 12 43C11.2044 43 10.4413 42.6839 9.87868 42.1213C9.31607 41.5587 9 40.7957 9 40V24C9 23.2044 9.31607 22.4413 9.87868 21.8787C10.4413 21.3161 11.2044 21 12 21C12.7956 21 13.5587 21.3161 14.1213 21.8787C14.6839 22.4413 15 23.2044 15 24ZM22 5C21.2044 5 20.4413 5.31607 19.8787 5.87868C19.3161 6.44129 19 7.20435 19 8V56C19 56.7957 19.3161 57.5587 19.8787 58.1213C20.4413 58.6839 21.2044 59 22 59C22.7956 59 23.5587 58.6839 24.1213 58.1213C24.6839 57.5587 25 56.7957 25 56V8C25 7.20435 24.6839 6.44129 24.1213 5.87868C23.5587 5.31607 22.7956 5 22 5ZM32 13C31.2044 13 30.4413 13.3161 29.8787 13.8787C29.3161 14.4413 29 15.2044 29 16V48C29 48.7957 29.3161 49.5587 29.8787 50.1213C30.4413 50.6839 31.2044 51 32 51C32.7956 51 33.5587 50.6839 34.1213 50.1213C34.6839 49.5587 35 48.7957 35 48V16C35 15.2044 34.6839 14.4413 34.1213 13.8787C33.5587 13.3161 32.7956 13 32 13ZM42 21C41.2043 21 40.4413 21.3161 39.8787 21.8787C39.3161 22.4413 39 23.2044 39 24V40C39 40.7957 39.3161 41.5587 39.8787 42.1213C40.4413 42.6839 41.2043 43 42 43C42.7957 43 43.5587 42.6839 44.1213 42.1213C44.6839 41.5587 45 40.7957 45 40V24C45 23.2044 44.6839 22.4413 44.1213 21.8787C43.5587 21.3161 42.7957 21 42 21ZM52 17C51.2043 17 50.4413 17.3161 49.8787 17.8787C49.3161 18.4413 49 19.2044 49 20V44C49 44.7957 49.3161 45.5587 49.8787 46.1213C50.4413 46.6839 51.2043 47 52 47C52.7957 47 53.5587 46.6839 54.1213 46.1213C54.6839 45.5587 55 44.7957 55 44V20C55 19.2044 54.6839 18.4413 54.1213 17.8787C53.5587 17.3161 52.7957 17 52 17Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
+export type WelcomeViewState = 'READY' | 'CONNECTING' | 'CALL_ENDED' | 'MIC_ERROR';
 
 interface WelcomeViewProps {
+  state: WelcomeViewState;
+  errorMessage?: string | null;
   startButtonText: string;
   onStartCall: () => void;
+  onStartAgain?: () => void;
+  onTryAgain?: () => void;
 }
 
 export const WelcomeView = ({
+  state,
+  errorMessage,
   startButtonText,
   onStartCall,
+  onStartAgain,
+  onTryAgain,
   ref,
 }: React.ComponentProps<'div'> & WelcomeViewProps) => {
   return (
-    <div ref={ref}>
-      <section className="bg-background flex flex-col items-center justify-center text-center">
-        <WelcomeImage />
+    <div
+      ref={ref}
+      className="relative min-h-screen w-full bg-[#0F1B2D] text-[#EDEDE6] flex flex-col justify-between items-center p-6 select-none font-sans overflow-hidden"
+    >
+      {/* 2. Background Atmosphere: Slow Ambient Glow */}
+      <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-[500px] rounded-full bg-radial from-[#2F9E7C]/10 via-[#1C2B40]/20 to-transparent blur-3xl animate-pulse transition-all duration-1000" />
 
-        <p className="text-foreground max-w-prose pt-1 leading-6 font-medium">
-          Chat live with your voice AI agent
-        </p>
+      {/* 3. Staggered Entrance: Header */}
+      <motion.header
+        initial={{ opacity: 0, y: -15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
+        className="z-10 w-full max-w-4xl flex items-center justify-between py-4 px-6 rounded-2xl bg-[#1C2B40]/60 backdrop-blur-md border border-white/10 shadow-lg shadow-[#2F9E7C]/5"
+      >
+        <div className="flex items-center space-x-3">
+          <div className="size-9 rounded-xl bg-[#0F1B2D]/80 border border-[#2F9E7C]/30 flex items-center justify-center text-[#2F9E7C] shadow-inner">
+            <ShieldCheck className="size-5" />
+          </div>
+          <div>
+            <h1 className="font-semibold text-sm tracking-wide text-[#EDEDE6]">FinSafe Assistant</h1>
+            <p className="text-xs text-[#8A97A8]">Private Banking & Financial Guidance</p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-2 bg-[#0F1B2D]/60 px-3 py-1.5 rounded-full border border-white/5">
+          <span className="inline-block size-2 rounded-full bg-[#2F9E7C] animate-pulse"></span>
+          <span className="text-xs font-mono text-[#8A97A8] tracking-wider uppercase">Encrypted 256-Bit</span>
+        </div>
+      </motion.header>
 
-        <Button
-          size="lg"
-          onClick={onStartCall}
-          className="mt-6 w-64 rounded-full font-mono text-xs font-bold tracking-wider uppercase"
-        >
-          {startButtonText}
-        </Button>
-      </section>
+      {/* Main Container */}
+      <main className="z-10 w-full max-w-xl flex flex-col items-center justify-center text-center my-auto py-10 px-4">
+        {/* ARIA Live Region for Screen Readers */}
+        <div className="sr-only" aria-live="polite" aria-atomic="true">
+          {state === 'READY' && 'FinSafe Assistant is ready to call.'}
+          {state === 'CONNECTING' && 'Connecting you now to FinSafe Assistant...'}
+          {state === 'CALL_ENDED' && 'Call ended safely. Select start again to restart.'}
+          {state === 'MIC_ERROR' && `Microphone error: ${errorMessage || 'Access blocked'}`}
+        </div>
 
-      <div className="fixed bottom-5 left-0 flex w-full items-center justify-center">
-        <p className="text-muted-foreground max-w-prose pt-1 text-xs leading-5 font-normal text-pretty md:text-sm">
-          Need help getting set up? Check out the{' '}
-          <a
-            target="_blank"
-            rel="noopener noreferrer"
-            href="https://docs.livekit.io/agents/start/voice-ai/"
-            className="underline"
+        {/* State 1: READY */}
+        {state === 'READY' && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6, delay: 0.15, ease: 'easeOut' }}
+            className="flex flex-col items-center"
           >
-            Voice AI quickstart
-          </a>
-          .
-        </p>
-      </div>
+            {/* 4. Signature Multi-Layered Pulse Rings */}
+            <div className="relative mb-10 flex items-center justify-center">
+              <div className="absolute size-44 rounded-full border border-[#2F9E7C]/15 animate-ping opacity-25 motion-reduce:animate-none" />
+              <div className="absolute size-36 rounded-full border border-[#2F9E7C]/30 animate-pulse opacity-50 motion-reduce:animate-none" />
+              <div className="size-24 rounded-full bg-[#1C2B40]/90 backdrop-blur-md border border-[#2F9E7C]/50 flex items-center justify-center shadow-xl shadow-[#2F9E7C]/15 transition-transform hover:scale-105">
+                <PhoneCall className="size-10 text-[#2F9E7C]" />
+              </div>
+            </div>
+
+            <h2 className="text-2xl font-bold text-[#EDEDE6] tracking-tight mb-3">
+              Talk to FinSafe Assistant
+            </h2>
+            <p className="text-sm text-[#8A97A8] max-w-md mb-8 leading-relaxed">
+              Verify government schemes, check eligibility guidelines, or discuss financial questions safely with your AI voice advisor.
+            </p>
+
+            <Button
+              size="lg"
+              onClick={onStartCall}
+              className="bg-[#2F9E7C] hover:bg-[#2F9E7C]/90 text-[#0F1B2D] font-semibold text-sm px-8 py-6 rounded-full shadow-lg shadow-[#2F9E7C]/20 transition-all cursor-pointer hover:scale-105 active:scale-95 focus:ring-2 focus:ring-[#2F9E7C] focus:ring-offset-2 focus:ring-offset-[#0F1B2D]"
+            >
+              {startButtonText || 'Start Call with FinSafe'}
+            </Button>
+          </motion.div>
+        )}
+
+        {/* State 2: CONNECTING */}
+        {state === 'CONNECTING' && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-col items-center"
+          >
+            <div className="relative mb-8 flex items-center justify-center">
+              <div className="size-28 rounded-full border-2 border-[#2F9E7C]/20 border-t-[#2F9E7C] animate-spin" />
+              <div className="absolute size-20 rounded-full bg-[#1C2B40]/80 backdrop-blur-md flex items-center justify-center">
+                <ShieldCheck className="size-8 text-[#2F9E7C] animate-pulse" />
+              </div>
+            </div>
+
+            <h2 className="text-xl font-semibold text-[#EDEDE6] mb-2">Connecting you now...</h2>
+            <p className="text-xs text-[#8A97A8] font-mono tracking-wide">Establishing secure voice audio session</p>
+          </motion.div>
+        )}
+
+        {/* State 5: CALL ENDED */}
+        {state === 'CALL_ENDED' && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col items-center"
+          >
+            <div className="size-20 rounded-full bg-[#1C2B40]/90 backdrop-blur-md border border-white/10 flex items-center justify-center mb-6 shadow-md">
+              <PhoneCall className="size-8 text-[#8A97A8]" />
+            </div>
+
+            <h2 className="text-2xl font-bold text-[#EDEDE6] mb-2">Call Ended Safely</h2>
+            <p className="text-sm text-[#8A97A8] max-w-sm mb-8 leading-relaxed">
+              Your voice session with FinSafe Assistant has closed. No sensitive credentials were saved.
+            </p>
+
+            <Button
+              size="lg"
+              onClick={onStartAgain || onStartCall}
+              className="bg-[#1C2B40]/90 hover:bg-[#1C2B40] border border-[#2F9E7C]/40 text-[#2F9E7C] font-semibold text-sm px-8 py-6 rounded-full transition-all cursor-pointer hover:scale-105 active:scale-95 flex items-center space-x-2"
+            >
+              <RefreshCw className="size-4 mr-2" />
+              Start New Call
+            </Button>
+          </motion.div>
+        )}
+
+        {/* State: MIC ERROR (Amber Alert) */}
+        {state === 'MIC_ERROR' && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full bg-[#1C2B40]/90 backdrop-blur-md border border-[#C98A3B]/40 rounded-2xl p-6 text-left shadow-xl shadow-[#C98A3B]/5"
+          >
+            <div className="flex items-start space-x-4 mb-4">
+              <div className="size-10 rounded-xl bg-[#C98A3B]/15 border border-[#C98A3B]/40 flex items-center justify-center text-[#C98A3B] shrink-0">
+                <AlertTriangle className="size-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-[#EDEDE6]">Microphone Access Blocked</h3>
+                <p className="text-xs text-[#8A97A8] mt-1">
+                  FinSafe Assistant requires microphone access to hear your questions.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-[#0F1B2D]/80 rounded-xl p-4 mb-6 border border-white/5">
+              <p className="text-xs font-semibold text-[#C98A3B] uppercase tracking-wider mb-2">How to fix in your browser:</p>
+              <ol className="text-xs text-[#8A97A8] space-y-1.5 list-decimal list-inside">
+                <li>Click the <span className="text-[#EDEDE6] font-medium">lock icon</span> next to the URL address bar.</li>
+                <li>Toggle <span className="text-[#EDEDE6] font-medium">Microphone</span> permission to <span className="text-[#2F9E7C] font-medium">Allow</span>.</li>
+                <li>Click the button below to try connecting again.</li>
+              </ol>
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                onClick={onTryAgain || onStartCall}
+                className="bg-[#C98A3B] hover:bg-[#C98A3B]/90 text-[#0F1B2D] font-semibold text-xs px-6 py-2.5 rounded-lg transition-all hover:scale-105 active:scale-95"
+              >
+                Try Again
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </main>
+
+      {/* 3. Staggered Entrance: Footer */}
+      <motion.footer
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.3, ease: 'easeOut' }}
+        className="z-10 w-full max-w-4xl pt-4 border-t border-white/10 flex flex-col md:flex-row items-center justify-between text-xs text-[#8A97A8]"
+      >
+        <p>© FinSafe Assistant • Institutional Security & Privacy Protection</p>
+        <p className="mt-2 md:mt-0 font-mono text-[11px]">Ref ID: <span className="text-[#EDEDE6] tabular-nums">FIN-2026-V8</span></p>
+      </motion.footer>
     </div>
   );
 };
+

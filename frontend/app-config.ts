@@ -33,31 +33,18 @@ export interface AppConfig {
 }
 
 export const APP_CONFIG_DEFAULTS: AppConfig = {
-  companyName: 'FinSafe Voice AI',
-  pageTitle: 'FinSafe — Financial Literacy & Fraud Protection Advisor',
-  pageDescription: 'Interactive voice guide for government schemes, banking literacy, and fraud prevention powered by Murf Falcon TTS',
+  companyName: 'FinSafe Assistant',
+  pageTitle: 'FinSafe — Private Banking & Financial Voice Assistant',
+  pageDescription: 'Secure voice banking assistant for scheme eligibility, financial literacy, and human escalation',
 
   supportsChatInput: true,
-  supportsVideoInput: true,
-  supportsScreenShare: true,
+  supportsVideoInput: false,
+  supportsScreenShare: false,
   isPreConnectBufferEnabled: true,
 
   logo: '/murf-logo.svg',
-  accent: '#059669',
+  accent: '#2F9E7C',
   logoDark: '/murf-logo-dark.svg',
-  accentDark: '#10b981',
-  startButtonText: 'Talk to FinSafe Advisor',
-
-  // optional: audio visualization configuration
-  // audioVisualizerType: 'bar',
-  // audioVisualizerColor: '#002cf2',
-  // audioVisualizerColorDark: '#1fd5f9',
-  // audioVisualizerColorShift: 0.3,
-  // audioVisualizerBarCount: 5,
-  // audioVisualizerType: 'radial',
-  // audioVisualizerRadialBarCount: 24,
-  // audioVisualizerRadialRadius: 100,
-  // audioVisualizerType: 'grid',
   // audioVisualizerGridRowCount: 25,
   // audioVisualizerGridColumnCount: 25,
   // audioVisualizerType: 'wave',

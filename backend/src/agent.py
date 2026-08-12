@@ -26,6 +26,8 @@ from livekit.plugins import (
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 from prompt import SYSTEM_PROMPT
+from escalation import create_escalation
+from memory import lookup_caller, lookup_caller_memory, save_caller_memory
 
 
 logger = logging.getLogger("agent")
@@ -38,6 +40,10 @@ load_dotenv(".env.local")
 # ============================================================
 
 class Assistant(Agent):
+
+    create_escalation = create_escalation
+    lookup_caller_memory = lookup_caller_memory
+    save_caller_memory = save_caller_memory
 
     def __init__(self) -> None:
         super().__init__(
@@ -688,6 +694,8 @@ async def my_agent(ctx: JobContext):
         if memory.get("exists"):
 
             saved_name = memory.get("name") or ""
+            saved_facts = memory.get("facts", [])
+            facts_str = ", ".join(saved_facts) if saved_facts else ""
 
             greeting_instructions = (
                 "This is a normal browser conversation. "
@@ -696,9 +704,14 @@ async def my_agent(ctx: JobContext):
                 "Guidance Assistant. "
 
                 + (
-                    f"If you know the caller's name ('{saved_name}'), "
-                    "you may greet them by name. "
+                    f"Welcome back the caller by name ('{saved_name}'). "
                     if saved_name
+                    else ""
+                )
+
+                + (
+                    f"Mention briefly that you remember from last time: {facts_str}. "
+                    if facts_str
                     else ""
                 )
 

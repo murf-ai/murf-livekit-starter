@@ -85,27 +85,27 @@ const SHIMMER_MOTION_PROPS: MotionProps = {
 const AGENT_STATE_LABELS: Record<string, { label: string; className: string }> = {
   disconnected: {
     label: 'Disconnected',
-    className: 'bg-slate-500/10 text-slate-500 border-slate-500/20',
+    className: 'bg-slate-500/10 text-[#8A97A8] border-[#8A97A8]/20',
   },
   connecting: {
-    label: 'Connecting',
-    className: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+    label: 'Connecting...',
+    className: 'bg-[#C98A3B]/10 text-[#C98A3B] border-[#C98A3B]/30',
   },
   initializing: {
     label: 'Initializing',
-    className: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+    className: 'bg-[#C98A3B]/10 text-[#C98A3B] border-[#C98A3B]/30',
   },
   listening: {
-    label: 'Listening',
-    className: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
+    label: 'Agent Listening',
+    className: 'bg-[#2F9E7C]/15 text-[#2F9E7C] border-[#2F9E7C]/40 shadow-sm shadow-[#2F9E7C]/10',
   },
   thinking: {
-    label: 'Thinking',
-    className: 'bg-teal-500/10 text-teal-500 border-teal-500/20',
+    label: 'Processing Request...',
+    className: 'bg-[#C98A3B]/15 text-[#C98A3B] border-[#C98A3B]/40',
   },
   speaking: {
-    label: 'Speaking',
-    className: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+    label: 'FinSafe Speaking',
+    className: 'bg-[#3EB489]/20 text-[#3EB489] border-[#3EB489]/50 shadow-md shadow-[#3EB489]/20 font-extrabold animate-pulse',
   },
 };
 

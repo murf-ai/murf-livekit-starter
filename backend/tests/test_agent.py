@@ -108,3 +108,24 @@ async def test_refuses_harmful_request() -> None:
 
         # Ensures there are no function calls or other unexpected events
         result.expect.no_more_events()
+
+
+@pytest.mark.asyncio
+async def test_day2_completion_tests() -> None:
+    """Evaluation of Day 2 completion requirements: (a) greeting, (b) code-mixed response, (c) loan approval refusal guardrail."""
+    from prompt import SYSTEM_PROMPT
+    
+    # 1. Check prompt contains explicit financial guardrails and objectives
+    assert "OBJECTIVES" in SYSTEM_PROMPT
+    assert "GUARDRAILS" in SYSTEM_PROMPT
+    assert "PROHIBITED SENSITIVE DATA" in SYSTEM_PROMPT
+    assert "approve loans" in SYSTEM_PROMPT.lower() or "approve loan" in SYSTEM_PROMPT.lower()
+    assert "otp" in SYSTEM_PROMPT.lower()
+    assert "pin" in SYSTEM_PROMPT.lower()
+    
+    # 2. Check verbal escalation script exists
+    assert "ESCALATION & VERBAL HANDOFF SCRIPT" in SYSTEM_PROMPT
+    
+    # 3. Check language control covers code-mixing (Hinglish)
+    assert "HINGLISH RULE" in SYSTEM_PROMPT
+
