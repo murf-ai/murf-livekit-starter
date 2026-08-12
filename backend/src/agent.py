@@ -454,7 +454,7 @@ async def my_agent(ctx: JobContext):
     session = AgentSession(
         stt=deepgram.STT(model="nova-3", language="multi"),
         llm=google.LLM(
-            model="gemini-3.6-flash",
+            model="gemini-3.5-flash",
         ),
         tts=murf.TTS(
             voice="Anisha",
@@ -489,7 +489,7 @@ async def my_agent(ctx: JobContext):
     if is_sip:
         # Trigger the compliant 2-sentence opening greeting automatically for the outbound call
         await session.say(
-            f"Hello, this is Shreya calling from Jan Sahay. "
+            f"Hello, this is Sita calling from Jana Sahaya. "
             f"We found you eligible for the {selected_scheme} scheme, and the deadline is on August 15th, so hurry up! "
             f"If you want to know more, say yes, and if you want to stop these calls, say no.",
             allow_interruptions=True,
