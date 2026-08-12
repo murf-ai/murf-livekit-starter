@@ -92,21 +92,21 @@ def test_failure_path_unknown_scheme():
 async def test_assistant_function_tools():
     assistant = Assistant(user_id="test_user_123")
 
-    # 1. Test list_available_schemes tool
-    schemes_json = await assistant.list_available_schemes()
-    schemes_dict = json.loads(schemes_json)
-    assert schemes_dict["status"] == "success"
+    # 1. Test lookup_caller tool
+    lookup_res = await assistant.lookup_caller()
+    assert "No record found" in lookup_res or "test_user_123" in lookup_res
 
-    # 2. Test check_scheme_eligibility tool
-    elig_json = await assistant.check_scheme_eligibility(
-        scheme_id="ssy", age=5, gender="female"
+    # 2. Test check_scheme_eligibility tool transient error (1st attempt returns error JSON)
+    attempt1_json = await assistant.check_scheme_eligibility(
+        scheme_name="PMJDY", age=25
     )
-    elig_dict = json.loads(elig_json)
-    assert elig_dict["is_eligible"] is True
-    assert elig_dict["as_of_date"] == DATA_TIMESTAMP
+    attempt1_dict = json.loads(attempt1_json)
+    assert attempt1_dict["eligible"] == "error"
+    assert "Simulated Transient Error" in attempt1_dict["error"]
 
-    # 3. Test get_scheme_document_checklist tool
-    docs_json = await assistant.get_scheme_document_checklist(scheme_id="ssy")
-    docs_dict = json.loads(docs_json)
-    assert docs_dict["status"] == "success"
-    assert len(docs_dict["mandatory_documents"]) > 0
+    # 3. Test retry (2nd attempt succeeds)
+    attempt2_json = await assistant.check_scheme_eligibility(
+        scheme_name="PMJDY", age=25
+    )
+    attempt2_dict = json.loads(attempt2_json)
+    assert attempt2_dict["eligible"] is True

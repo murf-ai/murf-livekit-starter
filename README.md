@@ -1,6 +1,6 @@
 # 🛡️ Sita — Citizen AI Voice Assistant Portal
 
-Jan Sahay is an AI-powered citizen assistance web platform designed to empower individuals with instant guidance on:
+Jana Sahaya is an AI-powered citizen assistance web platform designed to empower individuals with instant guidance on:
 - 💰 **Financial Literacy & Guidance**: Understand savings, budgeting, banking, loans, investments, and financial planning.
 - 🛡️ **Fraud Prevention & Cyber Safety**: Learn how to avoid UPI fraud, OTP scams, phishing links, and fake loan apps.
 - 🏛️ **Government Schemes Directory**: Discover central and state welfare schemes (like PM-KISAN, PMJDY, PMSBY, PMJJBY, APY, SSY, Mudra loans), check eligibility, and understand documentation.

@@ -71,9 +71,7 @@ async def main():
         )
 
         participant = await lk_api.sip.create_sip_participant(request)
-        logger.info(
-            f"Outbound call successful! Participant details: {participant}"
-        )
+        logger.info(f"Outbound call successful! Participant details: {participant}")
 
     except Exception as e:
         logger.error(f"Error making outbound SIP call: {e}")
@@ -82,4 +80,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main())

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { Landmark, Mic, ShieldCheck, Volume2 } from 'lucide-react';
 import { AnimatePresence, type MotionProps, motion } from 'motion/react';
 import {
   useAgent,
@@ -8,7 +9,6 @@ import {
   useSessionMessages,
   useVoiceAssistant,
 } from '@livekit/components-react';
-import { Landmark, Mic, ShieldCheck, Volume2 } from 'lucide-react';
 import { AgentChatTranscript } from '@/components/agents-ui/agent-chat-transcript';
 import {
   AgentControlBar,
@@ -244,7 +244,12 @@ export function AgentSessionView_01({
       <Fade top className="absolute inset-x-4 top-0 z-10 h-40" />
 
       <div className="absolute inset-x-4 top-4 z-40 flex justify-center md:inset-x-8">
-        <div className={cn('flex items-center gap-3 rounded-full border border-white/40 bg-white/80 px-4 py-2 shadow-lg backdrop-blur dark:border-slate-700/70 dark:bg-slate-950/80', statusConfig.accent)}>
+        <div
+          className={cn(
+            'flex items-center gap-3 rounded-full border border-white/40 bg-white/80 px-4 py-2 shadow-lg backdrop-blur dark:border-slate-700/70 dark:bg-slate-950/80',
+            statusConfig.accent
+          )}
+        >
           <div className="flex size-8 items-center justify-center rounded-full bg-white/80 shadow-sm dark:bg-slate-900/80">
             <StatusIcon className="size-4" />
           </div>

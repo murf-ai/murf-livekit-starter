@@ -1,5 +1,4 @@
 import logging
-import random
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -9,7 +8,6 @@ from livekit.agents import (
     AgentSession,
     JobContext,
     JobProcess,
-    UserInputTranscribedEvent,
     cli,
     function_tool,
     room_io,
@@ -32,11 +30,6 @@ try:
 except ImportError:
     import src.db as db
 
-try:
-    import schemes_data
-except ImportError:
-    import src.schemes_data as schemes_data
-
 
 class Assistant(Agent):
     def __init__(self, user_id: str, instructions: str = SYSTEM_PROMPT) -> None:
@@ -53,8 +46,52 @@ class Assistant(Agent):
         if user_info:
             import json
 
-            return json.dumps(user_info, ensure_ascii=False)
+            return json.dumps(user_info)
         return f"No record found for user ID: {self.user_id}"
+
+    @function_tool
+    async def create_escalation(
+        self,
+        caller_name: str,
+        situation: str,
+        what_happened: str,
+        urgency: str,
+        language: str,
+        follow_up_method: str,
+        contact_details: str,
+        checked_facts: dict | None = None,
+    ) -> str:
+        """Creates a human support request/escalation in the database when the caller reports fraud or requests a manual decision.
+        Always verify the caller has given verbal permission/consent before calling this.
+        Do NOT save credit card numbers, passwords, OTPs, PINs, or account numbers in the what_happened details.
+
+        Args:
+            caller_name: The caller's name.
+            situation: Short description of the reason, e.g. "Fraud Reporting" or "Manual Approval Request".
+            what_happened: Detailed explanation of the caller's concern.
+            urgency: How urgent this issue is. Must be exactly one of: "Low", "Medium", "High", "Emergency".
+            language: The caller's preferred language.
+            follow_up_method: The caller's preferred contact method (e.g., Phone Call, SMS, Email).
+            contact_details: Phone number or email to reach them.
+            checked_facts: Key-value facts/context the agent already checked.
+        """
+        if checked_facts is None:
+            checked_facts = {}
+        logger.info(
+            f"Tool create_escalation called for user_id: {self.user_id}, name: {caller_name}"
+        )
+        ref_id = db.create_escalation(
+            caller_id=self.user_id,
+            caller_name=caller_name,
+            situation=situation,
+            what_happened=what_happened,
+            checked_facts=checked_facts,
+            urgency=urgency,
+            language=language,
+            follow_up_method=follow_up_method,
+            contact_details=contact_details,
+        )
+        return ref_id
 
     @function_tool
     async def save_caller_facts(
@@ -65,7 +102,7 @@ class Assistant(Agent):
 
         Args:
             name: The caller's name.
-            language_preference: The caller's preferred language (e.g., Kannada, English, Hindi).
+            language_preference: The caller's preferred language (e.g., Hindi, English, Hinglish).
             facts: A dictionary of key-value pairs representing facts about the caller (e.g., eligibility, schemes checked). Do not store account or ID numbers.
         """
         logger.info(
@@ -73,82 +110,277 @@ class Assistant(Agent):
         )
         # Clean facts from any ID numbers or account numbers
         cleaned_facts = {}
-        if isinstance(facts, dict):
-            for k, v in facts.items():
-                if "id" in k.lower() or "account" in k.lower() or "number" in k.lower():
-                    continue
-                cleaned_facts[k] = v
+        for k, v in facts.items():
+            if "id" in k.lower() or "account" in k.lower() or "number" in k.lower():
+                continue
+            cleaned_facts[k] = v
 
         db.save_user(self.user_id, name, language_preference, cleaned_facts)
         return f"Successfully saved details for user {name} (ID: {self.user_id})."
 
     @function_tool
-    async def list_available_schemes(self) -> str:
-        """Retrieves a catalog of all supported Indian financial and welfare government schemes.
-
-        Call this tool when the caller asks what government schemes are available, wants to explore scheme options, or asks what financial programs Sita can help with.
-        Do NOT call this tool if the user already specified a target scheme name or scheme ID.
-        """
-        import json
-
-        logger.info("Tool list_available_schemes called.")
-        res = schemes_data.list_all_schemes()
-        return json.dumps(res, ensure_ascii=False)
-
-    @function_tool
     async def check_scheme_eligibility(
         self,
-        scheme_id: str,
-        age: int | None = None,
-        annual_income: float | None = None,
-        is_taxpayer: bool | None = None,
-        gender: str | None = None,
-        land_holding_acres: float | None = None,
+        scheme_name: str,
+        age: int,
+        is_income_tax_payer: bool = False,
+        girl_child_age: int = -1,
+        is_indian_resident: bool = True,
     ) -> str:
-        """Evaluates official eligibility criteria for an Indian government financial scheme based on collected caller answers.
+        """Checks the eligibility of a caller for a specific Indian government financial scheme and returns the required document checklist.
 
-        Call this tool ONLY AFTER asking and collecting the caller's relevant personal details (age, tax-paying status, land holding, gender, etc.).
-        Do NOT invoke this tool with assumed, placeholder, or invented values. Ask the caller first.
-
-        Args:
-            scheme_id: Scheme identifier code or name (e.g., 'pmjdy', 'pmsby', 'pmjjby', 'apy', 'ssy', 'pm_kisan', 'pmmy').
-            age: Caller's age in years (or girl child's age for SSY).
-            annual_income: Caller's total annual household income in Indian Rupees (INR).
-            is_taxpayer: True if the caller or spouse pays income tax; False otherwise.
-            gender: Caller's gender ('male', 'female', or 'other').
-            land_holding_acres: Total agricultural land owned by caller in acres (required for PM-KISAN).
-        """
-        import json
-
-        logger.info(
-            f"Tool check_scheme_eligibility called for scheme_id={scheme_id}, age={age}, taxpayer={is_taxpayer}"
-        )
-        res = schemes_data.evaluate_eligibility(
-            scheme_id=scheme_id,
-            age=age,
-            annual_income=annual_income,
-            is_taxpayer=is_taxpayer,
-            gender=gender,
-            land_holding_acres=land_holding_acres,
-        )
-        return json.dumps(res, ensure_ascii=False)
-
-    @function_tool
-    async def get_scheme_document_checklist(self, scheme_id: str) -> str:
-        """Retrieves the official list of mandatory documents and application instructions needed to apply for a specified government scheme.
-
-        Call this tool when the user asks what documents, papers, or ID proofs are required to open an account or apply for a specific scheme (e.g. PMJDY, SSY, APY, PM-KISAN, PMSBY, PMJJBY, PMMY).
+        Only call this tool when the caller explicitly asks about their eligibility, required documents, or interest rates/premiums for one of the supported schemes: PMJDY, PMSBY, PMJJBY, APY, or SSY, AND you have gathered the necessary parameters (such as age, tax payer status, or girl child details). Do NOT call this tool for general conversations or if you don't know which scheme they are interested in.
 
         Args:
-            scheme_id: Scheme identifier code or name (e.g., 'pmjdy', 'pmsby', 'pmjjby', 'apy', 'ssy', 'pm_kisan', 'pmmy').
+            scheme_name: The abbreviation of the scheme name to check. Must be exactly one of: "PMJDY", "PMSBY", "PMJJBY", "APY", "SSY".
+            age: The beneficiary's age in years.
+            is_income_tax_payer: True if the beneficiary pays income tax, False otherwise. (Important for APY eligibility).
+            girl_child_age: The age of the girl child in years. (Mandatory when checking Sukanya Samriddhi Yojana / SSY). Use -1 if not applicable.
+            is_indian_resident: True if the beneficiary is a resident of India, False otherwise.
         """
         import json
+        from datetime import datetime
 
-        logger.info(
-            f"Tool get_scheme_document_checklist called for scheme_id={scheme_id}"
-        )
-        res = schemes_data.get_document_checklist(scheme_id=scheme_id)
-        return json.dumps(res, ensure_ascii=False)
+        today_str = datetime.now().strftime("%B %d, %Y")
+
+        try:
+            # SIMULATE TRANSIENT FAILURE (Step 4 & user request)
+            # The first call to this tool in the session will fail, and subsequent retries will succeed.
+            attempts = getattr(self, "_eligibility_attempts", 0) + 1
+            self._eligibility_attempts = attempts
+            if attempts == 1:
+                raise Exception("API Connection Timeout (Simulated Transient Error)")
+
+            logger.info(
+                f"Tool check_scheme_eligibility called (Attempt {attempts}) for scheme: {scheme_name}, user_id: {self.user_id}"
+            )
+            name_upper = scheme_name.upper().strip()
+            supported_schemes = ["PMJDY", "PMSBY", "PMJJBY", "APY", "SSY"]
+
+            if name_upper not in supported_schemes:
+                return json.dumps(
+                    {
+                        "eligible": False,
+                        "reason": (
+                            f"Scheme '{scheme_name}' is not supported. Supported"
+                            f" schemes are: {', '.join(supported_schemes)}."
+                        ),
+                        "document_checklist": [],
+                        "scheme_benefits": {},
+                        "data_last_updated": today_str,
+                        "error": f"Unsupported scheme: {scheme_name}",
+                    }
+                )
+
+            if not is_indian_resident:
+                return json.dumps(
+                    {
+                        "eligible": False,
+                        "reason": (
+                            f"Only Indian residents are eligible for {name_upper}."
+                        ),
+                        "document_checklist": [],
+                        "scheme_benefits": {},
+                        "data_last_updated": today_str,
+                    }
+                )
+
+            if name_upper == "PMJDY":
+                # Pradhan Mantri Jan Dhan Yojana
+                is_eligible = age >= 10
+                reason = (
+                    "Eligible. Open to any resident Indian citizen aged 10 or"
+                    " above. (Designed for individuals who do not have any other"
+                    " bank account)."
+                    if is_eligible
+                    else ("Ineligible. Min age to open PMJDY account is 10 years.")
+                )
+                docs = [
+                    "Aadhaar Card (primary KYC)",
+                    "PAN Card (if available)",
+                    (
+                        "Or other officially valid document (Voter ID, driving"
+                        " license, NREGA card)"
+                    ),
+                ]
+                benefits = {
+                    "benefits_and_interest": (
+                        "Basic savings account with zero minimum balance"
+                        " requirement, earn interest on savings deposit (approx"
+                        " 2.70% to 3.00% p.a. depending on bank), free Rupay"
+                        " debit card with built-in Rs 2 Lakh accidental insurance"
+                        " cover, and overdraft facility up to Rs 10,000 for"
+                        " eligible accounts."
+                    )
+                }
+
+            elif name_upper == "PMSBY":
+                # Pradhan Mantri Suraksha Bima Yojana
+                is_eligible = 18 <= age <= 70
+                reason = (
+                    "Eligible. Open to individuals aged between 18 and 70 years."
+                    if is_eligible
+                    else (
+                        f"Ineligible. Age must be between 18 and 70 years."
+                        f" Provided age: {age}."
+                    )
+                )
+                docs = [
+                    "Aadhaar Card (primary KYC)",
+                    "Savings bank account details",
+                    "Consent form for auto-debit of premium",
+                ]
+                benefits = {
+                    "premium": "Rs 20 per annum (auto-debited from savings account)",
+                    "insurance_cover": (
+                        "Rs 2 Lakh for accidental death or total permanent"
+                        " disability, and Rs 1 Lakh for partial permanent"
+                        " disability."
+                    ),
+                    "validity": ("1 year (June 1 to May 31), auto-renewed annually."),
+                }
+
+            elif name_upper == "PMJJBY":
+                # Pradhan Mantri Jeevan Jyoti Bima Yojana
+                is_eligible = 18 <= age <= 50
+                reason = (
+                    "Eligible. Open to individuals aged between 18 and 50 years."
+                    if is_eligible
+                    else (
+                        f"Ineligible. Age must be between 18 and 50 years."
+                        f" Provided age: {age}."
+                    )
+                )
+                docs = [
+                    "Aadhaar Card (primary KYC)",
+                    "Savings bank account details",
+                    "Consent form for auto-debit of premium",
+                    "Self-declaration of good health (if enrolling late)",
+                ]
+                benefits = {
+                    "premium": ("Rs 436 per annum (auto-debited from savings account)"),
+                    "insurance_cover": (
+                        "Rs 2 Lakh life insurance cover for death due to any cause."
+                    ),
+                    "validity": (
+                        "1 year (June 1 to May 31), auto-renewed annually. Risk"
+                        " cover continues up to age 55 if enrolled by 50."
+                    ),
+                }
+
+            elif name_upper == "APY":
+                # Atal Pension Yojana
+                if is_income_tax_payer:
+                    is_eligible = False
+                    reason = (
+                        "Ineligible. Income tax payers are not eligible to join"
+                        " Atal Pension Yojana (rule effective since October 1,"
+                        " 2022)."
+                    )
+                else:
+                    is_eligible = 18 <= age <= 40
+                    reason = (
+                        "Eligible. Open to all non-taxpaying citizens aged"
+                        " between 18 and 40 years."
+                        if is_eligible
+                        else (
+                            "Ineligible. Age must be between 18 and 40 years to"
+                            f" enroll. Provided age: {age}."
+                        )
+                    )
+                docs = [
+                    "Aadhaar Card (primary KYC)",
+                    "Mobile number",
+                    "Savings bank account details",
+                    "Auto-debit authorization form",
+                ]
+                benefits = {
+                    "premium": ("Varies based on entry age and selected pension slab."),
+                    "pension_benefit": (
+                        "Guaranteed minimum pension of Rs 1,000, Rs 2,000, Rs"
+                        " 3,000, Rs 4,000, or Rs 5,000 per month after age 60,"
+                        " depending on contributions."
+                    ),
+                    "co_contribution": (
+                        "Government co-contribution is not available for new"
+                        " subscribers, but the pension amount is fully"
+                        " guaranteed by the Government of India."
+                    ),
+                }
+
+            elif name_upper == "SSY":
+                # Sukanya Samriddhi Yojana
+                if girl_child_age == -1:
+                    return json.dumps(
+                        {
+                            "eligible": "uncertain",
+                            "reason": (
+                                "Please provide the age of the girl child using the"
+                                " 'girl_child_age' parameter."
+                            ),
+                            "document_checklist": [],
+                            "scheme_benefits": {},
+                            "data_last_updated": today_str,
+                        }
+                    )
+                is_eligible = 0 <= girl_child_age <= 10
+                reason = (
+                    "Eligible. Open for girl child aged 10 years or below."
+                    if is_eligible
+                    else (
+                        "Ineligible. The account can only be opened for a girl"
+                        " child aged 10 years or below. Provided girl child"
+                        " age: "
+                        f"{girl_child_age}."
+                    )
+                )
+                docs = [
+                    "Birth certificate of the girl child (mandatory)",
+                    "Aadhaar Card and PAN Card of the parent/guardian",
+                    "Photograph of the girl child and parent",
+                    "Proof of address",
+                ]
+                benefits = {
+                    "interest_rate": (
+                        "8.2% per annum (compounded annually, tax-free"
+                        " interest, interest rate updated for fiscal year"
+                        f" 2025-2026 as of {today_str})"
+                    ),
+                    "tax_benefits": (
+                        "Triple tax exemption under Section 80C of the Income Tax Act."
+                    ),
+                    "maturity": (
+                        "Matures after 21 years from account opening or upon"
+                        " marriage of the girl child after she reaches 18 years."
+                    ),
+                }
+
+            return json.dumps(
+                {
+                    "eligible": is_eligible,
+                    "reason": reason,
+                    "document_checklist": docs,
+                    "scheme_benefits": benefits,
+                    "data_last_updated": today_str,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error checking scheme eligibility: {e}")
+            return json.dumps(
+                {
+                    "eligible": "error",
+                    "reason": (
+                        "The eligibility checker system is temporarily"
+                        " experiencing technical issues. Please check the inputs or"
+                        " try again shortly."
+                    ),
+                    "document_checklist": [],
+                    "scheme_benefits": {},
+                    "data_last_updated": today_str,
+                    "error": str(e),
+                }
+            )
 
 
 server = AgentServer()
@@ -171,30 +403,18 @@ async def my_agent(ctx: JobContext):
     # Initialize SQLite database
     db.init_db()
 
-    # Join the room and connect to LiveKit
-    await ctx.connect()
-
-    # Detect user identity and check if this is an outbound SIP call
+    # Retrieve the participant's identity and detect if it is a SIP call
     user_id = "unknown_user"
     is_sip = ctx.room.name.startswith("outbound_call_room")
-
-    try:
-        participant = await ctx.wait_for_participant()
-        if participant:
-            user_id = participant.identity
-            if participant.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
-                is_sip = True
-    except Exception as e:
-        logger.warning(f"Wait for participant timed out or failed: {e}")
-
     for p_identity, p_info in ctx.room.remote_participants.items():
-        if user_id == "unknown_user":
-            user_id = p_identity
+        user_id = p_identity
         if p_info.kind == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
             is_sip = True
         break
 
     logger.info(f"Active connection with user_id: {user_id}, is_sip: {is_sip}")
+
+    import random
 
     schemes_list = [
         "Pradhan Mantri Jan Dhan Yojana",
@@ -226,7 +446,7 @@ async def my_agent(ctx: JobContext):
             f"- Current Caller User ID: {user_id}\n"
             f"- IMPORTANT: You MUST immediately call `lookup_caller` at the very start of the conversation. "
             f"If a record is returned, welcome the user back by name and reference their previous interaction "
-            f"(e.g. 'Namaste Ramesh, last time we spoke about Atal Pension Yojana. Did you check your eligibility?'). "
+            f"(e.g. 'नमस्ते Ramesh जी, पिछली बार हमने आपके Atal Pension Yojana के बारे में बात की थी। क्या उससे जुड़ा कोई सवाल है?'). "
             f"If no record is found, greet them as a new user."
         )
 
@@ -234,58 +454,18 @@ async def my_agent(ctx: JobContext):
     session = AgentSession(
         stt=deepgram.STT(model="nova-3", language="multi"),
         llm=google.LLM(
-            model="gemini-2.0-flash",
+            model="gemini-3.6-flash",
         ),
         tts=murf.TTS(
-            voice="en-IN-anisha",
+            voice="Anisha",
             style="Conversation",
             tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
             text_pacing=True,
         ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
-        preemptive_generation=not is_sip,
+        preemptive_generation=False,
     )
-
-    @session.on("user_input_transcribed")
-    def on_user_input_transcribed(ev: UserInputTranscribedEvent):
-        transcript = ev.transcript.strip().lower()
-        if not transcript:
-            return
-
-        # Check for Kannada script characters (native Kannada)
-        has_kannada = any(0x0C80 <= ord(c) <= 0x0CFF for c in transcript)
-
-        # Check for common Kannada keywords (Kannada script)
-        kannada_keywords = {
-            "ಏನು",
-            "ಹೌದು",
-            "ಇಲ್ಲ",
-            "ನೀವು",
-            "ನಾನು",
-            "ಧನ್ಯವಾದ",
-            "ಯೋಜನೆ",
-            "ಸಹಾಯ",
-            "ಬ್ಯಾಂಕ್",
-            "ಬಿಮಾ",
-            "ಪಿಂಚಣಿ",
-            "ಅರ್ಜಿ",
-            "ಹೇಳಿ",
-            "ಸುರಕ್ಷೆ",
-        }
-        words = set(transcript.split())
-        has_kannada_words = not words.isdisjoint(kannada_keywords)
-
-        if has_kannada or has_kannada_words:
-            logger.info(
-                f"Detected Kannada speech: '{ev.transcript}'. Switching TTS to kn-IN-anisha."
-            )
-            session.tts.update_options(voice="kn-IN-anisha")
-        else:
-            logger.info(
-                f"Detected English speech: '{ev.transcript}'. Switching TTS to en-IN-anisha."
-            )
-            session.tts.update_options(voice="en-IN-anisha")
 
     # Start the session, which initializes the voice pipeline and warms up the models
     await session.start(
@@ -303,10 +483,13 @@ async def my_agent(ctx: JobContext):
         ),
     )
 
+    # Join the room and connect to the user
+    await ctx.connect()
+
     if is_sip:
         # Trigger the compliant 2-sentence opening greeting automatically for the outbound call
         await session.say(
-            f"Hello, this is Sita calling from Jana Sahaya. "
+            f"Hello, this is Shreya calling from Jan Sahay. "
             f"We found you eligible for the {selected_scheme} scheme, and the deadline is on August 15th, so hurry up! "
             f"If you want to know more, say yes, and if you want to stop these calls, say no.",
             allow_interruptions=True,
@@ -315,4 +498,3 @@ async def my_agent(ctx: JobContext):
 
 if __name__ == "__main__":
     cli.run_app(server)
-
