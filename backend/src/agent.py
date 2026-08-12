@@ -25,6 +25,7 @@ from livekit.plugins import deepgram, murf, openai, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 import db
+import escalation
 import schemes
 from prompt import SYSTEM_PROMPT
 
@@ -403,12 +404,14 @@ _NAME_PATTERNS = [
 ]
 
 _NAME_STOPWORDS = {
+    # Existing stopwords
     "jan",
     "sahay",
     "hello",
     "hi",
     "hey",
     "namaste",
+    "namaskar",
     "please",
     "help",
     "here",
@@ -468,6 +471,230 @@ _NAME_STOPWORDS = {
     "list",
     "give",
     "show",
+    # Additional pronouns, determiners, prepositions, articles, conjunctions
+    "you",
+    "yours",
+    "yourself",
+    "yourselves",
+    "he",
+    "him",
+    "his",
+    "himself",
+    "she",
+    "her",
+    "hers",
+    "herself",
+    "they",
+    "them",
+    "their",
+    "theirs",
+    "themselves",
+    "some",
+    "any",
+    "many",
+    "much",
+    "all",
+    "both",
+    "each",
+    "every",
+    "other",
+    "another",
+    "such",
+    "whose",
+    "which",
+    "whom",
+    "whoever",
+    "whatever",
+    "whichever",
+    "about",
+    "above",
+    "across",
+    "after",
+    "against",
+    "along",
+    "around",
+    "at",
+    "before",
+    "behind",
+    "below",
+    "beneath",
+    "beside",
+    "between",
+    "beyond",
+    "but",
+    "by",
+    "during",
+    "except",
+    "for",
+    "from",
+    "in",
+    "inside",
+    "into",
+    "like",
+    "near",
+    "of",
+    "off",
+    "on",
+    "onto",
+    "out",
+    "outside",
+    "over",
+    "past",
+    "since",
+    "through",
+    "throughout",
+    "till",
+    "to",
+    "toward",
+    "under",
+    "until",
+    "up",
+    "upon",
+    "with",
+    "within",
+    "without",
+    "and",
+    "or",
+    "so",
+    "than",
+    "as",
+    # Common helper/auxiliary/common verbs
+    "do",
+    "does",
+    "did",
+    "done",
+    "doing",
+    "have",
+    "has",
+    "had",
+    "having",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "can",
+    "could",
+    "will",
+    "would",
+    "shall",
+    "should",
+    "may",
+    "might",
+    "must",
+    "want",
+    "wants",
+    "wanted",
+    "wanting",
+    "need",
+    "needs",
+    "needed",
+    "needing",
+    "knows",
+    "knew",
+    "known",
+    "thinking",
+    "thought",
+    "thinks",
+    "remembers",
+    "remembered",
+    "say",
+    "says",
+    "said",
+    "saying",
+    "tells",
+    "told",
+    "asking",
+    "asked",
+    "asks",
+    "find",
+    "finds",
+    "found",
+    "get",
+    "gets",
+    "got",
+    "make",
+    "makes",
+    "made",
+    "go",
+    "goes",
+    "went",
+    "going",
+    "gone",
+    # Domain specific terms (case, ticket, progress, chance, etc.)
+    "case",
+    "cases",
+    "ticket",
+    "tickets",
+    "progress",
+    "status",
+    "update",
+    "updates",
+    "reference",
+    "chance",
+    "chances",
+    "change",
+    "changes",
+    "opportunity",
+    "issue",
+    "issues",
+    "problem",
+    "problems",
+    # Hindi/Hinglish question / pronoun / helper particles
+    "kya",
+    "kyu",
+    "kyun",
+    "kaise",
+    "kab",
+    "kahan",
+    "kon",
+    "kaun",
+    "mera",
+    "meri",
+    "mere",
+    "naam",
+    "nam",
+    "apna",
+    "apni",
+    "apne",
+    "aap",
+    "aapka",
+    "aapki",
+    "aapke",
+    "tum",
+    "tumhara",
+    "tu",
+    "tera",
+    "hoon",
+    "hun",
+    "hu",
+    "hai",
+    "hain",
+    "ho",
+    "tha",
+    "thi",
+    "ko",
+    "se",
+    "ka",
+    "ki",
+    "ke",
+    "ne",
+    "par",
+    "pe",
+    "mein",
+    "main",
+    "han",
+    "haan",
+    "ji",
+    "nahi",
+    "nahin",
+    "mat",
+    "karo",
+    "kariye",
+    "batao",
+    "bataiye",
 }
 
 
@@ -555,17 +782,74 @@ def _extract_bare_name(text: str) -> str | None:
     return None
 
 
+def _welcome_back_line(caller: dict, lang: str = "en") -> str:
+    """Exact spoken welcome for a returning caller (only real topic + open ticket)."""
+    name = caller.get("name") or caller.get("user_id") or "there"
+    facts = caller.get("facts") or {}
+    last_topic = (facts.get("last_topic") or "").strip()
+    ref = (facts.get("last_escalation_ref") or "").strip()
+    status = (facts.get("last_escalation_status") or "").strip().lower()
+    open_ticket = bool(ref) and status in {"", "open", "in_progress"}
+
+    if (lang or "en").lower().startswith("hi"):
+        line = f"Namaste {name}! "
+        if last_topic and last_topic not in {
+            "government schemes",
+            "government scheme",
+            "schemes",
+        }:
+            line += f"Pichhli baar humne {last_topic} ke baare mein baat ki thi. "
+        line += (
+            f"Aapka open ticket {ref} abhi bhi review mein hai." if open_ticket else ""
+        )
+        line += " Aaj main aapki kya madad karoon?"
+        return line
+
+    line = f"Welcome back {name}! "
+    if last_topic and last_topic not in {
+        "government schemes",
+        "government scheme",
+        "schemes",
+    }:
+        line += f"Last time we talked about {last_topic}. "
+    if open_ticket:
+        line += f"Your open case reference {ref} is still with our specialist team. "
+    line += "How can I help you today?"
+    return line
+
+
 def _format_memory_note(caller: dict) -> str:
     """System note for a returning caller on a NEW call session."""
     name = caller.get("name") or caller.get("user_id") or "caller"
     facts = caller.get("facts") or {}
     last_topic = facts.get("last_topic") or "government schemes"
+    ref = facts.get("last_escalation_ref") or ""
     return (
-        f"{_MEMORY_PREFIX} RETURNING_CALLER (new call only): name={name}; last_topic={last_topic}. "
-        f"Say: 'Welcome back {name}! I remember we were talking about {last_topic}. How can I help you today?' "
-        f"(or in Hindi: 'Welcome back {name}! Pichhli baar humne {last_topic} ke baare mein baat ki thi. Aaj main aapki kya madad karoon?') "
-        f"Do NOT say you just saved anything. Keep under 25 words."
+        f"{_MEMORY_PREFIX} RETURNING_CALLER (new call only): name={name}; "
+        f"last_topic={last_topic}; last_escalation_ref={ref or 'none'}. "
+        f"You MUST mention the last topic"
+        + (f" and reference {ref}" if ref else "")
+        + ". Do NOT say you just saved anything."
     )
+
+
+def _wants_recall(text: str) -> bool:
+    """True if user is asking whether we remember them / past chat."""
+    t = (text or "").lower()
+    keys = (
+        "do you remember",
+        "you remember me",
+        "remember me",
+        "yaad hai",
+        "yaad ho",
+        "pehchante",
+        "pehchaan",
+        "remember our",
+        "last time",
+        "pichhli baar",
+        "previous conversation",
+    )
+    return any(k in t for k in keys)
 
 
 def _format_passive_memory(caller: dict) -> str:
@@ -634,6 +918,244 @@ def _wants_save(text: str) -> bool:
     return False
 
 
+def extract_ticket_ref(text: str) -> str | None:
+    match = re.search(r"\bJS-[0-9A-Z]{8}\b", (text or "").upper())
+    if match:
+        return match.group(0)
+    return None
+
+
+def _wants_case_recall(text: str) -> bool:
+    """True if user is asking about progress, status, or recall of their ticket/case."""
+    t = (text or "").lower()
+    keys = (
+        "progress on my case",
+        "progress of my case",
+        "progress on my ticket",
+        "status of my case",
+        "status of my ticket",
+        "update on my case",
+        "update on my ticket",
+        "remember my case",
+        "remember my ticket",
+        "remember the case",
+        "remember the ticket",
+        "what happened to my case",
+        "what happened to my ticket",
+        "what is my ticket status",
+        "my case status",
+        "case status",
+        "ticket status",
+        "apne case",
+        "mera case",
+        "mere case",
+        "mera ticket",
+        "mere ticket",
+        "case ka kya hua",
+        "ticket ka kya hua",
+        "case ki progress",
+        "ticket ki progress",
+        "case yaad hai",
+        "ticket yaad hai",
+    )
+    # Also check if it contains a ticket ID pattern
+    if re.search(r"\bjs-[0-9a-z]{8}\b", t):
+        return True
+    return any(k in t for k in keys)
+
+
+def _format_ticket_status_response(
+    ticket: dict, lang: str, name: str | None = None
+) -> str:
+    ref = ticket.get("reference_id")
+    status = (ticket.get("status") or "open").lower()
+    notes = ticket.get("resolution_notes") or ""
+    urgency = ticket.get("urgency") or "medium"
+
+    sla = {
+        "emergency": "within a few hours",
+        "high": "within one business day",
+        "medium": "within one to two business days",
+        "low": "within two to three business days",
+    }.get(urgency, "within one to two business days")
+
+    name_part = f" {name}" if name else ""
+
+    if (lang or "hi").lower().startswith("hi"):
+        status_hi = {
+            "open": "open (review mein)",
+            "in_progress": "in progress (work chal raha hai)",
+            "resolved": "resolved (suljha liya gaya hai)",
+        }.get(status, "open")
+
+        if status == "resolved":
+            res = f"Namaste{name_part}! Aapka case {ref} resolve ho chuka hai. "
+            if notes:
+                res += f"Specialist ke notes hain: {notes}."
+            else:
+                res += "Specialist team ne isse close kar diya hai."
+            return res
+
+        res = f"Namaste{name_part}! Aapka case {ref} abhi {status_hi} hai. "
+        res += f"Humare specialist ise {sla} mein review karenge."
+        return res
+
+    # English
+    if status == "resolved":
+        res = f"Hello{name_part}! Your case {ref} has been resolved. "
+        if notes:
+            res += f"The specialist notes say: {notes}"
+        else:
+            res += "The specialist team has marked it as completed."
+        return res
+
+    res = f"Hello{name_part}! Your case {ref} is currently {status}. "
+    res += f"A specialist is scheduled to review it {sla}."
+    return res
+
+
+_CONSENT_YES = {
+    "yes",
+    "yeah",
+    "yep",
+    "yup",
+    "ok",
+    "okay",
+    "sure",
+    "please",
+    "go ahead",
+    "proceed",
+    "permission",
+    "haan",
+    "haa",
+    "han",
+    "ji",
+    "haaji",
+    "bilkul",
+    "zaroor",
+    "jaroor",
+    "theek",
+    "thik",
+    "sahi",
+    "karo",
+    "kariye",
+    "haanji",
+    "ha ji",
+    "हां",
+    "हाँ",
+    "जी",
+    "ठीक",
+    "बिल्कुल",
+}
+
+_CONSENT_NO = {
+    "no",
+    "nope",
+    "nah",
+    "naah",
+    "nahi",
+    "nahin",
+    "mat",
+    "cancel",
+    "stop",
+    "don't",
+    "dont",
+    "do not",
+    "refuse",
+    "denied",
+    "ruko",
+    "band",
+    "chhodo",
+    "mat bhejo",
+    "मत",
+    "नहीं",
+    "ना",
+}
+
+
+def _is_consent_yes(text: str) -> bool:
+    t = re.sub(r"[^\w\s]", "", (text or "").lower()).strip()
+    if not t:
+        return False
+    if any(n in t for n in ("no ", "not ", "don't", "dont", "nahi", "mat ")):
+        # "no problem" / "not sure" edge — still treat explicit no words carefully
+        if any(
+            p in t
+            for p in (
+                "no",
+                "nope",
+                "nahi",
+                "nahin",
+                "don't",
+                "dont",
+                "do not",
+                "mat",
+                "cancel",
+                "refuse",
+            )
+        ) and not any(p in t for p in ("no problem", "no worries", "not a problem")):
+            # If both yes and strong no, prefer no handled elsewhere
+            if t in _CONSENT_YES or t.startswith("yes") or t.startswith("haan"):
+                return True
+            return False
+    if t in _CONSENT_YES:
+        return True
+    words = set(re.findall(r"[a-zA-Z\u0900-\u097F']+", t))
+    return bool(words & _CONSENT_YES) and not bool(words & _CONSENT_NO)
+
+
+def _is_consent_no(text: str) -> bool:
+    t = re.sub(r"[^\w\s]", "", (text or "").lower()).strip()
+    if not t:
+        return False
+    if any(
+        p in t
+        for p in (
+            "don't share",
+            "dont share",
+            "do not share",
+            "don't proceed",
+            "dont proceed",
+            "no permission",
+            "mat bhejo",
+            "mat karo",
+            "nahi bhejo",
+            "no thanks",
+            "no thank",
+        )
+    ):
+        return True
+    if t in _CONSENT_NO:
+        return True
+    words = set(re.findall(r"[a-zA-Z\u0900-\u097F']+", t))
+    # Pure refusal words without yes
+    if words & _CONSENT_NO and not (words & _CONSENT_YES):
+        return True
+    return False
+
+
+def _prepare_pending_escalation(
+    text: str, reply_lang: str, known_name: str | None
+) -> dict:
+    """Build a pending escalation draft from the user utterance."""
+    trigger = escalation.detect_escalation_trigger(text) or "user_requested"
+    urgency = escalation.suggest_urgency(trigger, text)
+    name = known_name or "Caller"
+    return {
+        "issue_description": escalation.scrub_pii(text),
+        "trigger_type": trigger,
+        "urgency": urgency,
+        "requester_name": name,
+        "preferred_language": reply_lang,
+        "follow_up_method": "voice_callback",
+        "diagnostic_steps": [
+            "Caller reported an issue requiring human review.",
+            f"Detected trigger: {trigger}.",
+            "Awaiting explicit consent before dispatch.",
+        ],
+    }
+
+
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(
@@ -650,6 +1172,11 @@ class Assistant(Agent):
         self._saved_this_session = False
         self._welcomed_this_session = False
         self._awaiting_name_for_save = False
+        # Day 7 escalation consent gate
+        self._awaiting_escalation_consent = False
+        self._pending_escalation: dict | None = None
+        self._last_escalation_ref: str | None = None
+        self._awaiting_name_or_ref_for_recall = False
 
     @function_tool
     async def lookup_caller(self, ctx: RunContext, name_or_id: str) -> str:
@@ -948,17 +1475,196 @@ class Assistant(Agent):
                 }
             )
 
+    @function_tool
+    async def create_escalation(
+        self,
+        ctx: RunContext,
+        issue_description: str,
+        user_consent: bool,
+        trigger_type: str = "other",
+        urgency: str = "medium",
+        requester_name: str | None = None,
+        diagnostic_steps: str | None = None,
+        preferred_language: str | None = None,
+        follow_up_method: str | None = "voice_callback",
+        contact_hint: str | None = None,
+    ) -> str:
+        """Create a human-specialist escalation ticket (Day 7).
+
+        WHEN TO CALL (only after the caller explicitly consents):
+        - Trigger A: suspected fraud / unauthorized account access.
+        - Trigger B: complex disputes, limit overrides, or decisions beyond
+          agent authority (claims stuck, supervisor request, etc.).
+
+        CONSENT GATE (HARD RULE):
+        - First ask permission using the standard consent script.
+        - Call this tool with user_consent=true ONLY if the caller said yes.
+        - If the caller said no, do NOT call this tool (or pass user_consent=false).
+          Offer bank branch / CSC / official portal / helpline instead.
+
+        PII RULE:
+        - Never put passwords, OTPs, PINs, full account numbers, CVVs, Aadhaar,
+          or PAN into any argument. The backend scrubs free text, but do not
+          collect those secrets at all.
+
+        AFTER SUCCESS:
+        - Speak speak_out_loud_en or speak_out_loud_hi (match session language).
+        - Always read the reference_id and realistic next steps.
+        - Do NOT promise immediate live-agent pickup.
+        """
+        name = (requester_name or self._known_caller_name or "Caller").strip()
+        user_id = name.lower().replace(" ", "_")
+        lang = preferred_language or self._reply_lang or "hi"
+
+        steps: list[str] | str | None = diagnostic_steps
+        if not steps:
+            steps = [
+                "Agent detected escalation trigger from conversation.",
+                f"Last topic discussed: {self._last_user_topic}.",
+                "Agent requested explicit consent before sharing summary.",
+            ]
+
+        try:
+            result = escalation.create_escalation(
+                user_id=user_id,
+                issue_description=issue_description,
+                user_consent=bool(user_consent),
+                trigger_type=trigger_type,
+                requester_name=name,
+                diagnostic_steps=steps,
+                urgency=urgency,
+                preferred_language=lang,
+                follow_up_method=follow_up_method or "voice_callback",
+                contact_hint=contact_hint,
+            )
+        except Exception as err:
+            logger.exception("create_escalation failed: %s", err)
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": "tool_failure",
+                    "message": (
+                        "Escalation system temporarily unavailable. Apologise, "
+                        "do not invent a reference ID, and offer bank helpline / "
+                        "branch / CSC as alternatives."
+                    ),
+                }
+            )
+
+        self._awaiting_escalation_consent = False
+        self._pending_escalation = None
+        if result.get("ok") and result.get("reference_id"):
+            self._last_escalation_ref = result["reference_id"]
+            topic = (
+                "fraud / unauthorized access"
+                if trigger_type == "fraud_suspected"
+                else "complex transaction / human review"
+            )
+            self._last_user_topic = topic
+            if name and name.lower() != "caller":
+                self._persist_caller_breadcrumb(
+                    name,
+                    extra_facts={
+                        "last_escalation_ref": result["reference_id"],
+                        "last_escalation_status": result.get("status") or "open",
+                        "last_escalation_trigger": trigger_type,
+                        "last_topic": topic,
+                    },
+                    lang=lang,
+                )
+
+            speak = (
+                result.get("speak_out_loud_en")
+                if (lang or "").startswith("en")
+                else result.get("speak_out_loud_hi")
+            )
+            if speak:
+                try:
+                    await ctx.session.say(speak, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak escalation confirm: %s", err)
+
+        elif result.get("status") == "consent_denied":
+            speak = (
+                result.get("speak_out_loud_en")
+                if (lang or "").startswith("en")
+                else result.get("speak_out_loud_hi")
+            )
+            if speak:
+                try:
+                    await ctx.session.say(speak, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak consent-denied path: %s", err)
+
+        return json.dumps(result)
+
+    def _persist_caller_breadcrumb(
+        self,
+        name: str | None = None,
+        *,
+        extra_facts: dict | None = None,
+        lang: str | None = None,
+    ) -> None:
+        """Write last_topic ONLY if it's a real discussed topic (never invent 'government schemes')."""
+        clean = (name or self._known_caller_name or "").strip()
+        if not clean or clean.lower() == "caller":
+            return
+        if clean.isascii():
+            clean = clean.title()
+        user_id = clean.lower().replace(" ", "_")
+        facts: dict = {"saved_conversation": True}
+        real_topic = self._last_user_topic or ""
+        if real_topic and real_topic not in {
+            "government schemes",
+            "opening a bank account",
+            "Fixed Deposits",
+            "PMJDY scheme",
+            "PMSBY insurance",
+            "PMJJBY life insurance",
+            "Atal Pension Yojana",
+            "UPI and digital payments",
+            "loans",
+            "insurance",
+        }:
+            facts["last_topic"] = real_topic
+        if self._last_escalation_ref:
+            facts["last_escalation_ref"] = self._last_escalation_ref
+            facts["last_escalation_status"] = "open"
+        if extra_facts:
+            facts.update(extra_facts)
+        try:
+            db.save_caller(
+                user_id=user_id,
+                name=clean,
+                language_preference=lang or self._reply_lang,
+                facts=facts,
+                consent_given=True,
+            )
+            self._known_caller_name = clean
+            self._memory_loaded = True
+        except Exception as err:
+            logger.warning("Could not persist caller breadcrumb for %s: %s", clean, err)
+
+    def _lookup_returning_caller(self, text: str) -> dict | None:
+        """Find stored profile from an intro / recall utterance."""
+        name = extract_caller_name(text) or _extract_bare_name(text)
+        if not name:
+            return None
+        caller = db.get_caller(name)
+        if caller:
+            return caller
+        # Title-case Latin fallback (sam → Sam)
+        if name.isascii():
+            return db.get_caller(name.title()) or db.get_caller(name.lower())
+        return None
+
     def _auto_memory_for_turn(self, turn_ctx: llm.ChatContext, text: str) -> None:
         """Auto-load returning caller memory for a NEW call session only.
 
-        All save logic is handled by the save intercept in on_user_turn_completed
-        which bypasses the LLM entirely (session.say + StopResponse).
+        Prefer the hard welcome intercept in on_user_turn_completed; this is a
+        fallback system note if the LLM path still runs.
         """
         if self._saved_this_session or self._welcomed_this_session:
-            return
-
-        name = extract_caller_name(text)
-        if not name:
             return
 
         text_lower = (text or "").lower()
@@ -968,15 +1674,16 @@ class Assistant(Agent):
         ):
             return
 
-        # Returning caller on a NEW call — look up stored profile
-        existing = db.get_caller(name)
+        existing = self._lookup_returning_caller(text)
         if existing:
-            self._known_caller_name = existing.get("name") or name
+            self._known_caller_name = existing.get("name") or extract_caller_name(text)
             self._memory_loaded = True
             self._welcomed_this_session = True
             _strip_lang_locks(turn_ctx)
             turn_ctx.add_message(role="system", content=_format_memory_note(existing))
-            logger.info("Auto-loaded returning caller memory for %s", name)
+            logger.info(
+                "Auto-loaded returning caller memory for %s", self._known_caller_name
+            )
 
     def note_stt_language(self, language: str | None, transcript: str) -> None:
         if language:
@@ -1091,6 +1798,317 @@ class Assistant(Agent):
             text, self._last_stt_language, turn_ctx=turn_ctx
         )
 
+        # ── ESCALATION CONSENT INTERCEPT (Day 7) ───────────────────
+        # (Runs before recall so fraud/dispute utterances still escalate.)
+        if self._awaiting_escalation_consent and self._pending_escalation:
+            if _is_consent_no(text_clean):
+                self._awaiting_escalation_consent = False
+                self._pending_escalation = None
+                refuse = escalation.refusal_self_service(reply_lang)
+                logger.info("Escalation consent denied by user")
+                try:
+                    await self.session.say(refuse, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak escalation refusal: %s", err)
+                raise StopResponse()
+
+            if _is_consent_yes(text_clean):
+                pending = dict(self._pending_escalation)
+                self._awaiting_escalation_consent = False
+                self._pending_escalation = None
+                name = (
+                    pending.get("requester_name") or self._known_caller_name or "Caller"
+                )
+                user_id = str(name).lower().replace(" ", "_")
+                result = escalation.create_escalation(
+                    user_id=user_id,
+                    issue_description=pending.get("issue_description") or text,
+                    user_consent=True,
+                    trigger_type=pending.get("trigger_type") or "other",
+                    requester_name=name,
+                    diagnostic_steps=pending.get("diagnostic_steps"),
+                    urgency=pending.get("urgency") or "medium",
+                    preferred_language=reply_lang,
+                    follow_up_method=pending.get("follow_up_method")
+                    or "voice_callback",
+                    contact_hint=pending.get("contact_hint"),
+                )
+                if result.get("ok") and result.get("reference_id"):
+                    self._last_escalation_ref = result["reference_id"]
+                    topic = (
+                        "fraud / unauthorized access"
+                        if (pending.get("trigger_type") == "fraud_suspected")
+                        else "complex transaction / human review"
+                    )
+                    self._last_user_topic = topic
+                    # Persist under real name when known; otherwise keep ref on agent
+                    # until the caller introduces themselves later.
+                    if name and str(name).lower() != "caller":
+                        self._persist_caller_breadcrumb(
+                            str(name),
+                            extra_facts={
+                                "last_escalation_ref": result["reference_id"],
+                                "last_escalation_status": result.get("status")
+                                or "open",
+                                "last_escalation_trigger": pending.get("trigger_type"),
+                                "last_topic": topic,
+                            },
+                            lang=reply_lang,
+                        )
+                    else:
+                        logger.info(
+                            "Escalation %s created without caller name — "
+                            "will attach when name is known",
+                            result["reference_id"],
+                        )
+                speak = (
+                    result.get("speak_out_loud_en")
+                    if reply_lang == "en"
+                    else result.get("speak_out_loud_hi")
+                ) or result.get("message", "Escalation processed.")
+                # If we still don't know the caller, ask for a name so the ticket
+                # attaches to their profile for next-call recall.
+                if result.get("ok") and (
+                    not self._known_caller_name
+                    or str(self._known_caller_name).lower() == "caller"
+                ):
+                    speak += (
+                        " Please tell me your name so I can attach this ticket to your profile."
+                        if reply_lang == "en"
+                        else " Kripya apna naam bataiye taaki main yeh ticket aapke profile se jod sakoon."
+                    )
+                    self._awaiting_name_for_save = True
+                logger.info(
+                    "Escalation after consent: ok=%s ref=%s",
+                    result.get("ok"),
+                    result.get("reference_id"),
+                )
+                try:
+                    await self.session.say(speak, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak escalation result: %s", err)
+                raise StopResponse()
+
+            # Unclear answer — re-ask consent, do not dispatch
+            reask = escalation.consent_prompt(reply_lang)
+            try:
+                await self.session.say(reask, allow_interruptions=True)
+            except Exception as err:
+                logger.warning("Could not re-ask escalation consent: %s", err)
+            raise StopResponse()
+
+        # Auto-detect mandatory escalation triggers and open consent gate.
+        # Skip if already mid-save flow or pure greets.
+        detected_trigger = escalation.detect_escalation_trigger(text)
+        if detected_trigger and not self._awaiting_name_for_save:
+            self._pending_escalation = _prepare_pending_escalation(
+                text, reply_lang, self._known_caller_name
+            )
+            self._awaiting_escalation_consent = True
+            self._last_user_topic = (
+                "fraud / unauthorized access"
+                if detected_trigger == "fraud_suspected"
+                else "complex transaction / human review"
+            )
+            ack = (
+                "I understand this needs a human specialist. "
+                + escalation.CONSENT_PROMPT_EN
+                if reply_lang == "en"
+                else "Main samajh gayi, iske liye human specialist chahiye. "
+                + escalation.CONSENT_PROMPT_HI
+            )
+            logger.info("Escalation trigger=%s — asking consent", detected_trigger)
+            try:
+                await self.session.say(ack, allow_interruptions=True)
+            except Exception as err:
+                logger.warning("Could not speak escalation consent prompt: %s", err)
+            raise StopResponse()
+        # ── END ESCALATION CONSENT INTERCEPT ───────────────────────
+
+        # ── RETURNING CALLER RECALL INTERCEPT ──────────────────────
+        # Bypass LLM so we always speak last_topic + open ticket ref.
+        # Skipped when this turn already matched an escalation trigger above.
+        if not self._welcomed_this_session and not self._awaiting_name_for_save:
+            existing = self._lookup_returning_caller(text)
+            name_from_text = extract_caller_name(text) or _extract_bare_name(text)
+            wants_recall = _wants_recall(text_clean)
+            # Intro with known profile, or explicit "do you remember?"
+            if existing and (wants_recall or name_from_text):
+                self._known_caller_name = existing.get("name") or name_from_text
+                self._memory_loaded = True
+                self._welcomed_this_session = True
+                facts = existing.get("facts") or {}
+                if facts.get("last_topic"):
+                    self._last_user_topic = str(facts["last_topic"])
+                if facts.get("last_escalation_ref"):
+                    self._last_escalation_ref = str(facts["last_escalation_ref"])
+
+                # Add memory note to context so it is persisted in chat history
+                turn_ctx.add_message(
+                    role="system", content=_format_memory_note(existing)
+                )
+
+                welcome = _welcome_back_line(existing, reply_lang)
+                logger.info(
+                    "Recall intercept: name=%s topic=%s ref=%s",
+                    self._known_caller_name,
+                    facts.get("last_topic"),
+                    facts.get("last_escalation_ref"),
+                )
+                try:
+                    await self.session.say(welcome, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak welcome-back: %s", err)
+                raise StopResponse()
+        # ── END RETURNING CALLER RECALL INTERCEPT ──────────────────
+
+        # ── CASE RECALL INTERCEPT ──────────────────────────────────
+        # Handle cases where the user asks about their case status or progress.
+        # This can happen at any time (even after welcomed).
+        if _wants_case_recall(text_clean) or self._awaiting_name_or_ref_for_recall:
+            if self._awaiting_name_or_ref_for_recall:
+                _refusal = {
+                    "no",
+                    "nahi",
+                    "nahin",
+                    "nah",
+                    "naah",
+                    "mat",
+                    "cancel",
+                    "skip",
+                    "ruko",
+                    "band",
+                    "chhodo",
+                }
+                text_words = set(re.findall(r"[a-zA-Z\u0900-\u097F']+", text_clean))
+                is_refusal = (
+                    bool(text_words & _refusal)
+                    or "don't" in text_clean
+                    or "dont" in text_clean
+                )
+                if is_refusal:
+                    self._awaiting_name_or_ref_for_recall = False
+                    logger.info("Case recall check cancelled by user")
+                    ack = (
+                        "Theek hai, koi baat nahi! Aur kya madad karoon?"
+                        if reply_lang == "hi"
+                        else "No problem! How else can I help you?"
+                    )
+                    try:
+                        await self.session.say(ack, allow_interruptions=True)
+                    except Exception as err:
+                        logger.warning("Could not speak cancel ack: %s", err)
+                    raise StopResponse()
+
+            ref = extract_ticket_ref(text)
+
+            # If the user provided a reference ID
+            if ref:
+                self._awaiting_name_or_ref_for_recall = False
+                ticket = escalation.get_escalation(ref)
+                if ticket:
+                    # Retrieve status & issue details
+                    speak = _format_ticket_status_response(ticket, reply_lang)
+                    logger.info(
+                        "Case recall by ref: %s -> %s", ref, ticket.get("status")
+                    )
+                else:
+                    speak = (
+                        f"I couldn't find any ticket with reference ID {ref}. "
+                        "Please double check the reference ID and try again."
+                        if reply_lang == "en"
+                        else f"Mujhe reference ID {ref} ka koi ticket nahi mila. "
+                        "Kripya reference ID check karke phir se koshish karein."
+                    )
+                try:
+                    await self.session.say(speak, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak ticket status: %s", err)
+                raise StopResponse()
+
+            # If the user did not provide a ref, check if we have a known caller name
+            known_name = self._known_caller_name
+            # If we were awaiting a name/ref and they just gave a name
+            if self._awaiting_name_or_ref_for_recall and not known_name:
+                extracted_name = extract_caller_name(text) or _extract_bare_name(text)
+                if extracted_name:
+                    known_name = extracted_name
+                    # Also link it as our known caller name for the session
+                    self._known_caller_name = extracted_name
+                    self._memory_loaded = True
+                    # Check if caller has a profile
+                    caller_profile = db.get_caller(extracted_name)
+                    if caller_profile:
+                        # Merge facts if needed
+                        facts = caller_profile.get("facts") or {}
+                        if facts.get("last_topic"):
+                            self._last_user_topic = str(facts["last_topic"])
+                        if facts.get("last_escalation_ref"):
+                            self._last_escalation_ref = str(
+                                facts["last_escalation_ref"]
+                            )
+
+            if known_name and known_name.lower() != "caller":
+                self._awaiting_name_or_ref_for_recall = False
+                # Look up tickets for this user
+                user_id = known_name.lower().replace(" ", "_")
+                tickets = escalation.list_escalations(user_id=user_id)
+                if tickets:
+                    # Speak status of the most recent ticket
+                    most_recent = tickets[0]
+                    speak = _format_ticket_status_response(
+                        most_recent, reply_lang, known_name
+                    )
+                    logger.info(
+                        "Case recall by name: %s -> %s",
+                        known_name,
+                        most_recent.get("reference_id"),
+                    )
+                else:
+                    speak = (
+                        f"I see you are {known_name}, but I couldn't find any registered cases "
+                        "under your name. Would you like me to create a new ticket for you?"
+                        if reply_lang == "en"
+                        else f"Main dekh sakti hoon ki aap {known_name} hain, par mujhe aapke naam par "
+                        "koi case nahi mila. Kya aap naya ticket banana chahte hain?"
+                    )
+                try:
+                    await self.session.say(speak, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak ticket status: %s", err)
+                raise StopResponse()
+
+            # If we have a session escalation ref
+            if self._last_escalation_ref:
+                self._awaiting_name_or_ref_for_recall = False
+                ticket = escalation.get_escalation(self._last_escalation_ref)
+                if ticket:
+                    speak = _format_ticket_status_response(ticket, reply_lang)
+                    logger.info(
+                        "Case recall by session ref: %s", self._last_escalation_ref
+                    )
+                    try:
+                        await self.session.say(speak, allow_interruptions=True)
+                    except Exception as err:
+                        logger.warning("Could not speak ticket status: %s", err)
+                    raise StopResponse()
+
+            # If we don't know the name or ref, ask for it
+            self._awaiting_name_or_ref_for_recall = True
+            speak = (
+                "I'd be happy to check your case status. Could you please tell me your name "
+                "or the case reference ID?"
+                if reply_lang == "en"
+                else "Main aapke case ka status check kar sakti hoon. Kripya apna naam "
+                "ya case reference ID bataiye?"
+            )
+            try:
+                await self.session.say(speak, allow_interruptions=True)
+            except Exception as err:
+                logger.warning("Could not ask for name/ref: %s", err)
+            raise StopResponse()
+        # ── END CASE RECALL INTERCEPT ──────────────────────────────
+
         # ── SAVE INTERCEPT: bypass LLM entirely for save flow ──────
         # This prevents the agent from spamming previous topic answers
         # when the user is trying to save the conversation.
@@ -1131,19 +2149,15 @@ class Assistant(Agent):
             name = extract_caller_name(text) or _extract_bare_name(text)
             if name:
                 self._awaiting_name_for_save = False
-                user_id = name.lower().replace(" ", "_")
-                db.save_caller(
-                    user_id=user_id,
-                    name=name,
-                    language_preference=self._reply_lang,
-                    facts={
-                        "saved_conversation": True,
-                        "last_topic": self._last_user_topic,
-                    },
-                    consent_given=True,
+                extra = {}
+                if self._last_escalation_ref:
+                    extra = {
+                        "last_escalation_ref": self._last_escalation_ref,
+                        "last_escalation_status": "open",
+                    }
+                self._persist_caller_breadcrumb(
+                    name, extra_facts=extra, lang=reply_lang
                 )
-                self._known_caller_name = name
-                self._memory_loaded = True
                 self._saved_this_session = True
                 confirm = _save_confirm_line(name, reply_lang)
                 logger.info("Save intercept: saved %s", name)
@@ -1168,19 +2182,15 @@ class Assistant(Agent):
         if _wants_save(text_clean):
             name = extract_caller_name(text) or self._known_caller_name
             if name:
-                user_id = name.lower().replace(" ", "_")
-                db.save_caller(
-                    user_id=user_id,
-                    name=name,
-                    language_preference=self._reply_lang,
-                    facts={
-                        "saved_conversation": True,
-                        "last_topic": self._last_user_topic,
-                    },
-                    consent_given=True,
+                extra = {}
+                if self._last_escalation_ref:
+                    extra = {
+                        "last_escalation_ref": self._last_escalation_ref,
+                        "last_escalation_status": "open",
+                    }
+                self._persist_caller_breadcrumb(
+                    name, extra_facts=extra, lang=reply_lang
                 )
-                self._known_caller_name = name
-                self._memory_loaded = True
                 self._saved_this_session = True
                 self._awaiting_name_for_save = False
                 confirm = _save_confirm_line(name, reply_lang)
@@ -1225,12 +2235,30 @@ class Assistant(Agent):
             self._last_user_topic = "Atal Pension Yojana"
         elif "upi" in text_lower or "digital payment" in text_lower:
             self._last_user_topic = "UPI and digital payments"
+        elif "fraud" in text_lower or "unauthorized" in text_lower:
+            self._last_user_topic = "fraud / unauthorized access"
+        elif "lost" in text_lower and "card" in text_lower:
+            self._last_user_topic = "lost card / account security"
         elif "loan" in text_lower or "emi" in text_lower:
             self._last_user_topic = "loans"
         elif "insurance" in text_lower or "bima" in text_lower:
             self._last_user_topic = "insurance"
         elif "scheme" in text_lower or "yojana" in text_lower:
             self._last_user_topic = "government schemes"
+
+        # If caller just gave their name mid-call (not save, not already welcomed),
+        # attach any in-session escalation + topic to their profile.
+        intro_name = extract_caller_name(text)
+        if (
+            intro_name
+            and not self._awaiting_name_for_save
+            and (
+                not self._known_caller_name
+                or intro_name.lower() != self._known_caller_name.lower()
+            )
+        ):
+            self._persist_caller_breadcrumb(intro_name, lang=reply_lang)
+            logger.info("Linked session state to caller name %s", intro_name)
 
         # Cross-call memory: auto lookup returning caller on NEW call.
         try:
@@ -1276,7 +2304,8 @@ class Assistant(Agent):
 
 
 # Keep one warm process so the next call after END CALL joins quickly.
-server = AgentServer(num_idle_processes=1)
+# HTTP health port for the worker (not the voice UI). Frontend is on :3000.
+server = AgentServer(num_idle_processes=1, port=8081)
 
 
 def prewarm(proc: JobProcess):
@@ -1362,6 +2391,7 @@ async def my_agent(ctx: JobContext):
     # CRITICAL: connect to room FIRST, then start session
     await ctx.connect()
     db.init_db()
+    escalation.init_escalation_db()
     logger.info("Room connected, starting agent session for %s", ctx.room.name)
 
     await session.start(
@@ -1374,15 +2404,13 @@ async def my_agent(ctx: JobContext):
     )
 
     async def cleanup():
-        # Persist a light breadcrumb if we learned a name this call.
+        # Always persist last_topic + open ticket so the NEXT call can recall them.
         if agent._known_caller_name:
             try:
-                db.save_caller(
-                    user_id=agent._known_caller_name.lower().replace(" ", "_"),
-                    name=agent._known_caller_name,
-                    language_preference=agent._reply_lang,
-                    facts={"last_room": ctx.room.name},
-                    consent_given=True,
+                agent._persist_caller_breadcrumb(
+                    agent._known_caller_name,
+                    extra_facts={"last_room": ctx.room.name},
+                    lang=agent._reply_lang,
                 )
             except Exception as err:
                 logger.warning("Failed to persist session breadcrumb: %s", err)

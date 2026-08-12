@@ -135,7 +135,8 @@ async def test_was_welcomed_before_turn_logic(temp_db, monkeypatch):
     # Turn 1: Caller says "I am Raj" on a new call
     ctx = MockChatContext()
     msg = MockMessage("I am Raj")
-    await assistant.on_user_turn_completed(ctx, msg)
+    with pytest.raises(agent.StopResponse):
+        await assistant.on_user_turn_completed(ctx, msg)
 
     # Verify that self._welcomed_this_session became True
     assert assistant._welcomed_this_session is True
@@ -145,7 +146,7 @@ async def test_was_welcomed_before_turn_logic(temp_db, monkeypatch):
     passive_notes = [m for m in ctx.messages if "CALLER_CONTEXT" in m["content"]]
     assert len(returning_notes) == 1
     assert len(passive_notes) == 0
-    assert "Welcome back Raj!" in returning_notes[0]["content"]
+    assert "Raj" in returning_notes[0]["content"]
     assert "Fixed Deposits" in returning_notes[0]["content"]
 
     # Turn 2: Caller says "What is PMJDY?"

@@ -1,16 +1,22 @@
-"""Day 6 outbound agent — scheme deadline reminder for a previously eligible caller.
+"""Outbound SIP agent — Day 6 scheme reminders + Day 7 escalation resolve notify.
 
-Places a SIP call (Twilio trunk or Linphone), opens with who/why/how-to-stop,
-then reminds about the approaching scheme deadline.
+Places a SIP call (Twilio trunk or Linphone mobile client), opens with
+who/why/how-to-stop, then either:
+  - Day 6: reminds about an approaching scheme deadline, or
+  - Day 7: notifies that a human-escalated case was resolved (reference ID).
 
 Run worker:
     uv run python src/telephony/outbound/agent.py dev
 
-Dial:
+Dial (Day 6):
     uv run python src/telephony/outbound/dial.py --to <number|linphone-user> \\
       --name Ramesh --scheme pmsby --lang hi
 
-Trunk setup: src/telephony/README.md or Linphone guide in challenge supplementary docs.
+Resolve + notify (Day 7):
+    uv run python src/telephony/outbound/resolve_notify.py \\
+      --ref JS-A1B2C3D4 --to <linphone-user> --notes "…"
+
+Trunk setup: src/telephony/README.md (Linphone mobile path recommended).
 """
 
 from __future__ import annotations
@@ -19,6 +25,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -42,7 +49,7 @@ import schemes
 
 logger = logging.getLogger("outbound-agent")
 
-# Load backend/.env.local, then src/test/.env.local overrides for Day 6 telephony.
+# Load backend/.env.local, then src/test/.env.local overrides for telephony.
 _BACKEND_ROOT = Path(__file__).resolve().parents[3]
 _SRC_ROOT = Path(__file__).resolve().parents[2]
 # override=True so a stale shell OPENAI_API_KEY cannot mask the nvapi key
@@ -50,7 +57,7 @@ load_dotenv(_BACKEND_ROOT / ".env.local", override=True)
 load_dotenv(_SRC_ROOT / "test" / ".env.local", override=True)
 load_dotenv(".env.local", override=True)
 
-# Day 6 telephony (Linphone free path or Twilio)
+# Day 6/7 telephony (Linphone free path or Twilio)
 SIP_OUTBOUND_HOST = os.getenv("SIP_OUTBOUND_HOST", "sip.linphone.org")
 OUTBOUND_TRUNK_ID = os.getenv("LIVEKIT_SIP_OUTBOUND_TRUNK_ID") or os.getenv(
     "LIVEKIT_SIP_TRUNK_ID"
@@ -66,7 +73,7 @@ LOCALE_HI = "hi-IN"
 LOCALE_EN = "en-IN"
 CALLEE_IDENTITY = "phone-user"
 
-OUTBOUND_SYSTEM = """
+OUTBOUND_SYSTEM_SCHEME = """
 IDENTITY: You are Jan Sahay (जन सहाय), a financial-inclusion education assistant.
 You are on an OUTBOUND phone call about a government scheme deadline.
 
@@ -86,6 +93,26 @@ MISSION (Day 6):
 - If they ask for a human: transfer_to_human if available.
 """
 
+OUTBOUND_SYSTEM_RESOLUTION = """
+IDENTITY: You are Jan Sahay (जन सहाय) — authoritative, empathetic, professional
+financial customer service for a top-tier institution, speaking over mobile SIP
+(Linphone). You are on an OUTBOUND resolution-notification call.
+
+OPENING (already spoken once — do not re-introduce fully):
+- Who you are, that a specialist reviewed their escalated case, the reference ID,
+  and that they can say "stop calling" / "कॉल बंद" to end.
+
+MISSION (Day 7):
+- Confirm the case status (resolved) and read the reference ID clearly.
+- Share the scrubbed resolution outcome from CALL CONTEXT — never invent extra claims.
+- Never promise immediate live-agent pickup, refunds, or limit changes on this call.
+- Never ask for OTP, PIN, password, CVV, full account number, or Aadhaar.
+- If they still need help: offer bank branch / CSC / helpline, or transfer_to_human if available.
+- Keep replies under ~35 spoken words. No markdown, bullets, or emojis.
+- Match the call language from session context.
+- If voicemail: use detected_answering_machine. When done: goodbye then end_call.
+"""
+
 
 def _parse_metadata(raw: str | None) -> dict:
     if not raw:
@@ -97,8 +124,31 @@ def _parse_metadata(raw: str | None) -> dict:
         return {"phone_number": raw.strip()} if raw.strip() else {}
 
 
+def _scrub_spoken(text: str | None) -> str:
+    """Lightweight secret scrub before TTS on mobile networks."""
+    if not text:
+        return ""
+    cleaned = str(text)
+    cleaned = re.sub(
+        r"\b(?:otp|pin|password|cvv|cvc)\s*[:=]?\s*\S+",
+        "[redacted]",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\b\d{10,18}\b", "[redacted]", cleaned)
+    return cleaned.strip()
+
+
 def build_greeting(meta: dict) -> str:
-    """First two sentences: who, why, how to stop (Day 6 Step 4)."""
+    """Opening audio: who / why / how-to-stop (Day 6 or Day 7)."""
+    purpose = (meta.get("purpose") or "scheme_deadline_reminder").lower()
+    if purpose == "escalation_resolution":
+        return build_resolution_greeting(meta)
+    return build_scheme_greeting(meta)
+
+
+def build_scheme_greeting(meta: dict) -> str:
+    """Day 6 scheme deadline opening."""
     name = (meta.get("caller_name") or "").strip()
     scheme = (meta.get("scheme") or "pmsby").lower()
     lang = (meta.get("language") or "hi").lower()
@@ -135,6 +185,49 @@ def build_greeting(meta: dict) -> str:
     return f"{who} {why} {stop}"
 
 
+def build_resolution_greeting(meta: dict) -> str:
+    """Day 7 escalation-resolution opening for Linphone / mobile SIP."""
+    name = (meta.get("caller_name") or "").strip()
+    lang = (meta.get("language") or "hi").lower()
+    ref = (meta.get("reference_id") or "unknown").strip()
+    notes = _scrub_spoken(meta.get("resolution_notes") or "")
+
+    if lang.startswith("en"):
+        who = (
+            "Hello"
+            + (f" {name}" if name else "")
+            + ". This is Jan Sahay from the specialist follow-up desk."
+        )
+        why = (
+            f"I am calling about your escalated case, reference {ref}, "
+            "which a human specialist has now marked as resolved."
+        )
+        if notes:
+            why += f" Outcome summary: {notes}."
+        stop = (
+            "If you want this to stop, say stop calling or hang up. "
+            "I will not ask for OTP, PIN, or account numbers."
+        )
+        return f"{who} {why} {stop}"
+
+    who = (
+        "नमस्ते"
+        + (f" {name}" if name else "")
+        + "। मैं जन सहाय हूँ, specialist follow-up desk से।"
+    )
+    why = (
+        f"मैं आपके escalated case, reference {ref}, के बारे में कॉल कर रही हूँ — "
+        "human specialist ने इसे resolved चिन्हित किया है।"
+    )
+    if notes:
+        why += f" संक्षिप्त परिणाम: {notes}."
+    stop = (
+        "अगर कॉल बंद करनी हो तो 'कॉल बंद' बोलें या फोन काट दें। "
+        "OTP, PIN, या account number कभी नहीं माँगे जाएँगे।"
+    )
+    return f"{who} {why} {stop}"
+
+
 class OutboundAgent(Agent):
     def __init__(self, ctx: JobContext, meta: dict) -> None:
         lang = (meta.get("language") or "hi").lower()
@@ -144,15 +237,31 @@ class OutboundAgent(Agent):
             else "\nLANGUAGE: Reply in Hindi only this call.\n"
         )
         name = meta.get("caller_name") or "caller"
-        scheme = meta.get("scheme") or "pmsby"
-        eligible = bool(meta.get("previously_eligible", True))
-        context_note = (
-            f"\nCALL CONTEXT: callee_name={name}; scheme={scheme}; "
-            f"previously_eligible={eligible}; purpose=scheme_deadline_reminder.\n"
-        )
-        super().__init__(instructions=OUTBOUND_SYSTEM + lang_note + context_note)
+        purpose = (meta.get("purpose") or "scheme_deadline_reminder").lower()
+
+        if purpose == "escalation_resolution":
+            base = OUTBOUND_SYSTEM_RESOLUTION
+            context_note = (
+                f"\nCALL CONTEXT: purpose=escalation_resolution; "
+                f"callee_name={name}; "
+                f"reference_id={meta.get('reference_id') or 'unknown'}; "
+                f"resolution_notes={_scrub_spoken(meta.get('resolution_notes'))}; "
+                f"issue_description={_scrub_spoken(meta.get('issue_description'))}; "
+                f"follow_up_method={meta.get('follow_up_method') or 'voice_callback'}.\n"
+            )
+        else:
+            base = OUTBOUND_SYSTEM_SCHEME
+            scheme = meta.get("scheme") or "pmsby"
+            eligible = bool(meta.get("previously_eligible", True))
+            context_note = (
+                f"\nCALL CONTEXT: callee_name={name}; scheme={scheme}; "
+                f"previously_eligible={eligible}; purpose=scheme_deadline_reminder.\n"
+            )
+
+        super().__init__(instructions=base + lang_note + context_note)
         self.ctx = ctx
         self.meta = meta
+        self.purpose = purpose
 
     @function_tool
     async def get_deadline_reminder(self, context: RunContext) -> str:
@@ -228,7 +337,13 @@ server = AgentServer()
 
 
 def prewarm(proc: JobProcess):
-    proc.userdata["vad"] = silero.VAD.load()
+    # Tuned for mobile SIP / Linphone: reduce false barge-ins from network noise.
+    proc.userdata["vad"] = silero.VAD.load(
+        min_speech_duration=0.4,
+        min_silence_duration=0.7,
+        activation_threshold=0.7,
+        prefix_padding_duration=0.25,
+    )
 
 
 server.setup_fnc = prewarm
@@ -251,23 +366,27 @@ async def outbound_agent(ctx: JobContext):
     await ctx.connect()
     db.init_db()
 
+    purpose = (meta.get("purpose") or "scheme_deadline_reminder").lower()
     # Persist lightweight outreach breadcrumb (no phone secrets beyond name/scheme).
     name = (meta.get("caller_name") or "").strip()
     if name:
         try:
+            facts: dict = {"last_outreach": purpose}
+            if purpose == "escalation_resolution":
+                facts["last_escalation_ref"] = meta.get("reference_id") or ""
+                facts["last_escalation_status"] = "resolved"
+            else:
+                facts["last_eligibility_scheme"] = meta.get("scheme") or "pmsby"
+                facts["last_eligibility_status"] = (
+                    "likely_eligible"
+                    if meta.get("previously_eligible", True)
+                    else "unknown"
+                )
             db.save_caller(
                 user_id=name.lower().replace(" ", "_"),
                 name=name,
                 language_preference=meta.get("language") or "hi",
-                facts={
-                    "last_eligibility_scheme": meta.get("scheme") or "pmsby",
-                    "last_eligibility_status": (
-                        "likely_eligible"
-                        if meta.get("previously_eligible", True)
-                        else "unknown"
-                    ),
-                    "last_outreach": "scheme_deadline_reminder",
-                },
+                facts=facts,
                 consent_given=True,
             )
         except Exception as err:
@@ -293,6 +412,7 @@ async def outbound_agent(ctx: JobContext):
         extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
 
+    # Low-latency mobile SIP pipeline: tighter endpointing, telephony NC later.
     session = AgentSession(
         stt=deepgram.STT(model="nova-3", language="multi"),
         llm=nvidia_llm,
@@ -301,12 +421,17 @@ async def outbound_agent(ctx: JobContext):
             locale=locale,
             style=None,
             text_pacing=False,
+            min_buffer_size=40,
+            max_buffer_delay_in_ms=180,
             sample_rate=24000,
         ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
         preemptive_generation=False,
         allow_interruptions=True,
+        min_interruption_duration=0.5,
+        min_endpointing_delay=0.4,
+        max_endpointing_delay=2.0,
     )
 
     agent = OutboundAgent(ctx, meta)
