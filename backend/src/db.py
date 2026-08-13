@@ -44,6 +44,17 @@ def init_db():
             status TEXT DEFAULT 'open'
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS calls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_name TEXT,
+            participant_identity TEXT,
+            status TEXT DEFAULT 'started',
+            created_at TEXT,
+            ended_at TEXT,
+            error_message TEXT
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -306,6 +317,66 @@ def create_escalation(
     return reference_id
 
 
+def start_call(room_name: str, participant_identity: str) -> int:
+    """Logs the start of a call and returns the call log ID."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    created_at = datetime.now().isoformat()
+    cursor.execute(
+        """
+        INSERT INTO calls (room_name, participant_identity, status, created_at)
+        VALUES (?, ?, 'started', ?)
+    """,
+        (room_name, participant_identity, created_at),
+    )
+    call_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return call_id
+
+
+def complete_call(call_id: int, status: str, error_message: str = None):
+    """Updates the status and ended time of a call log."""
+    if not call_id:
+        return
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    ended_at = datetime.now().isoformat()
+    cursor.execute(
+        """
+        UPDATE calls
+        SET status = ?, ended_at = ?, error_message = ?
+        WHERE id = ?
+    """,
+        (status, ended_at, error_message, call_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_call_stats() -> dict:
+    """Returns the statistics of calls: total, successful, failed."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT COUNT(*) FROM calls")
+        total = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM calls WHERE status = 'success'")
+        successful = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM calls WHERE status = 'failed'")
+        failed = cursor.fetchone()[0]
+    except sqlite3.OperationalError:
+        total, successful, failed = 0, 0, 0
+    conn.close()
+    return {
+        "total": total,
+        "successful": successful,
+        "failed": failed,
+    }
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         cmd = sys.argv[1]
@@ -346,3 +417,6 @@ if __name__ == "__main__":
             conn.commit()
             conn.close()
             print(json.dumps({"success": True}))
+        elif cmd == "get_call_stats_json":
+            stats = get_call_stats()
+            print(json.dumps(stats))

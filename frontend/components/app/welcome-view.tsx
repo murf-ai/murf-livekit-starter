@@ -545,6 +545,29 @@ export const WelcomeView = ({
   const [textSize, setTextSize] = useState<'normal' | 'large'>('normal');
   const [selectedLanguage, setSelectedLanguage] = useState('English');
 
+  // Call stats states
+  const [stats, setStats] = useState<{ total: number; successful: number; failed: number } | null>(null);
+  const [loadingStats, setLoadingStats] = useState(false);
+
+  const fetchStats = async () => {
+    setLoadingStats(true);
+    try {
+      const res = await fetch('/api/stats');
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data);
+      }
+    } catch (err) {
+      console.error('Error fetching call stats:', err);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
   // Complaint Wizard States
   const [complaintStep, setComplaintStep] = useState(1);
   const [selectedComplaintType, setSelectedComplaintType] = useState('');
@@ -947,6 +970,94 @@ export const WelcomeView = ({
                   <span className="mt-3 animate-pulse text-[10px] font-extrabold tracking-wider text-emerald-400 uppercase">
                     {t.startCallLabel}
                   </span>
+                </div>
+              </div>
+            </section>
+
+            {/* Call Performance Dashboard */}
+            <section className="relative rounded-2xl border border-slate-800 bg-slate-900/40 p-6 shadow-xl backdrop-blur-md text-left">
+              <div className="mb-6 flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">📊</span>
+                  <h3 className="text-lg font-bold text-slate-100">
+                    Sita AI — Live Call Metrics
+                  </h3>
+                </div>
+                <button
+                  onClick={fetchStats}
+                  disabled={loadingStats}
+                  className={`flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-350 transition-all hover:bg-slate-800 hover:text-white ${loadingStats ? 'opacity-50' : ''}`}
+                >
+                  <span className={`inline-block ${loadingStats ? 'animate-spin' : ''}`}>🔄</span>
+                  {loadingStats ? 'Syncing...' : 'Refresh Stats'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                {/* Total Calls Card */}
+                <div className="group relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950/80 p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-amber-500/30 hover:shadow-[0_0_15px_rgba(245,158,11,0.08)]">
+                  <div className="absolute top-0 right-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-amber-500/5 blur-xl group-hover:bg-amber-500/10" />
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-amber-500/20 bg-amber-500/5 text-lg font-bold text-amber-400">
+                      📞
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                        Total Calls Logged
+                      </p>
+                      {loadingStats ? (
+                        <div className="h-7 w-12 animate-pulse rounded bg-slate-800 mt-1" />
+                      ) : (
+                        <h4 className="text-2xl font-extrabold text-amber-400 mt-0.5">
+                          {stats?.total ?? 0}
+                        </h4>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Successful Calls Card */}
+                <div className="group relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950/80 p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-500/30 hover:shadow-[0_0_15px_rgba(16,185,129,0.08)]">
+                  <div className="absolute top-0 right-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-emerald-500/5 blur-xl group-hover:bg-emerald-500/10" />
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/5 text-lg font-bold text-emerald-400">
+                      ✅
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                        Successful Calls
+                      </p>
+                      {loadingStats ? (
+                        <div className="h-7 w-12 animate-pulse rounded bg-slate-800 mt-1" />
+                      ) : (
+                        <h4 className="text-2xl font-extrabold text-emerald-400 mt-0.5">
+                          {stats?.successful ?? 0}
+                        </h4>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Failed Calls Card */}
+                <div className="group relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950/80 p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-rose-500/30 hover:shadow-[0_0_15px_rgba(244,63,94,0.08)]">
+                  <div className="absolute top-0 right-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-rose-500/5 blur-xl group-hover:bg-rose-500/10" />
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-rose-500/20 bg-rose-500/5 text-lg font-bold text-rose-400">
+                      ⚠️
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                        Failed Calls
+                      </p>
+                      {loadingStats ? (
+                        <div className="h-7 w-12 animate-pulse rounded bg-slate-800 mt-1" />
+                      ) : (
+                        <h4 className="text-2xl font-extrabold text-rose-400 mt-0.5">
+                          {stats?.failed ?? 0}
+                        </h4>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>

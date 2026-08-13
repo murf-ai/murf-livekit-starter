@@ -450,50 +450,78 @@ async def my_agent(ctx: JobContext):
             f"If no record is found, greet them as a new user."
         )
 
-    # Set up a voice AI pipeline using Murf Falcon, Gemini, Deepgram, and the LiveKit turn detector
-    session = AgentSession(
-        stt=deepgram.STT(model="nova-3", language="multi"),
-        llm=google.LLM(
-            model="gemini-3.5-flash",
-        ),
-        tts=murf.TTS(
-            voice="Anisha",
-            style="Conversation",
-            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-            text_pacing=True,
-        ),
-        turn_detection=MultilingualModel(),
-        vad=ctx.proc.userdata["vad"],
-        preemptive_generation=False,
-    )
+    # Log the start of the call
+    call_id = None
+    try:
+        call_id = db.start_call(ctx.room.name, user_id)
+        logger.info(f"Logged start of call ID: {call_id} in room: {ctx.room.name}")
+    except Exception as e:
+        logger.error(f"Failed to start call log: {e}")
 
-    # Start the session, which initializes the voice pipeline and warms up the models
-    await session.start(
-        agent=Assistant(user_id=user_id, instructions=instructions),
-        room=ctx.room,
-        room_options=room_io.RoomOptions(
-            audio_input=room_io.AudioInputOptions(
-                noise_cancellation=lambda params: (
-                    noise_cancellation.BVCTelephony()
-                    if params.participant.kind
-                    == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
-                    else noise_cancellation.BVC()
+    try:
+        # Set up a voice AI pipeline using Murf Falcon, Gemini, Deepgram, and the LiveKit turn detector
+        session = AgentSession(
+            stt=deepgram.STT(model="nova-3", language="multi"),
+            llm=google.LLM(
+                model="gemini-3.5-flash",
+            ),
+            tts=murf.TTS(
+                voice="Anisha",
+                style="Conversation",
+                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+                text_pacing=True,
+            ),
+            turn_detection=MultilingualModel(),
+            vad=ctx.proc.userdata["vad"],
+            preemptive_generation=False,
+        )
+
+        # Start the session, which initializes the voice pipeline and warms up the models
+        await session.start(
+            agent=Assistant(user_id=user_id, instructions=instructions),
+            room=ctx.room,
+            room_options=room_io.RoomOptions(
+                audio_input=room_io.AudioInputOptions(
+                    noise_cancellation=lambda params: (
+                        noise_cancellation.BVCTelephony()
+                        if params.participant.kind
+                        == rtc.ParticipantKind.PARTICIPANT_KIND_SIP
+                        else noise_cancellation.BVC()
+                    ),
                 ),
             ),
-        ),
-    )
-
-    # Join the room and connect to the user
-    await ctx.connect()
-
-    if is_sip:
-        # Trigger the compliant 2-sentence opening greeting automatically for the outbound call
-        await session.say(
-            f"Hello, this is Sita calling from Jana Sahaya. "
-            f"We found you eligible for the {selected_scheme} scheme, and the deadline is on August 15th, so hurry up! "
-            f"If you want to know more, say yes, and if you want to stop these calls, say no.",
-            allow_interruptions=True,
         )
+
+        # Join the room and connect to the user
+        await ctx.connect()
+
+        # Register successful shutdown callback
+        async def on_shutdown():
+            try:
+                db.complete_call(call_id, "success")
+                logger.info(f"Logged clean completion of call ID: {call_id}")
+            except Exception as e:
+                logger.error(f"Failed to log call completion: {e}")
+
+        ctx.add_shutdown_callback(on_shutdown)
+
+        if is_sip:
+            # Trigger the compliant 2-sentence opening greeting automatically for the outbound call
+            await session.say(
+                f"Hello, this is Sita calling from Jana Sahaya. "
+                f"We found you eligible for the {selected_scheme} scheme, and the deadline is on August 15th, so hurry up! "
+                f"If you want to know more, say yes, and if you want to stop these calls, say no.",
+                allow_interruptions=True,
+            )
+    except Exception as e:
+        logger.error(f"Error in my_agent session: {e}")
+        if call_id:
+            try:
+                db.complete_call(call_id, "failed", str(e))
+                logger.info(f"Logged failed status for call ID: {call_id}")
+            except Exception as db_err:
+                logger.error(f"Failed to log call failure: {db_err}")
+        raise e
 
 
 if __name__ == "__main__":

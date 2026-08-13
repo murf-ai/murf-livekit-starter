@@ -93,6 +93,7 @@ export function ViewController({ appConfig }: ViewControllerProps) {
   const [sessionPhase, setSessionPhase] = useState<SessionPhase>('ready');
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [hasAttemptedStart, setHasAttemptedStart] = useState(false);
+  const [currentTab, setCurrentTab] = useState<'home' | 'schemes' | 'fraud' | 'complaint' | 'escalations'>('home');
 
   const handleStartCall = async () => {
     setPermissionError(null);
@@ -137,6 +138,8 @@ export function ViewController({ appConfig }: ViewControllerProps) {
           statusDescription={statusCopy.description}
           permissionError={permissionError}
           onStartCall={handleStartCall}
+          currentTab={currentTab}
+          onTabChange={setCurrentTab}
         />
       )}
       {isConnected && (
