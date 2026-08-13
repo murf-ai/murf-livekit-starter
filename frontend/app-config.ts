@@ -43,6 +43,7 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   isPreConnectBufferEnabled: true,
 
   logo: '/murf-logo.svg',
+  startButtonText: 'Start Call',
   accent: '#2F9E7C',
   logoDark: '/murf-logo-dark.svg',
   // audioVisualizerGridRowCount: 25,

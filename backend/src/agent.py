@@ -2,6 +2,7 @@ import logging
 import json
 from pathlib import Path
 
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from livekit import rtc
 from livekit.agents import (
@@ -27,7 +28,7 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 from prompt import SYSTEM_PROMPT
 from escalation import create_escalation
-from memory import lookup_caller, lookup_caller_memory, save_caller_memory
+from memory import lookup_caller, lookup_caller_memory, save_caller_memory, log_call_outcome
 
 
 logger = logging.getLogger("agent")
@@ -550,6 +551,27 @@ async def my_agent(ctx: JobContext):
     )
 
     # --------------------------------------------------------
+    # Call outcome state setup
+    # --------------------------------------------------------
+    call_id = ctx.room.name or f"call_{id(ctx)}"
+    call_state = {
+        "outcome": "failed",
+        "reason": "dropped",
+        "has_user_spoken": False,
+    }
+
+    def on_shutdown():
+        t1 = datetime.now(timezone.utc).isoformat()
+        logger.info(f"[TIMESTAMP DEBUG 1b/1c] on_shutdown called at {t1} - logging outcome call_id={call_id}, outcome={call_state['outcome']}, reason={call_state['reason']}")
+        log_call_outcome(
+            call_id=call_id,
+            outcome=call_state["outcome"],
+            outcome_reason=call_state["reason"]
+        )
+
+    ctx.add_shutdown_callback(on_shutdown)
+
+    # --------------------------------------------------------
     # Voice AI pipeline
     # --------------------------------------------------------
 
@@ -560,7 +582,7 @@ async def my_agent(ctx: JobContext):
         ),
 
         llm=google.LLM(
-            model="gemini-3.5-flash",
+            model="gemini-3.1-flash-lite",
         ),
 
         tts=murf.TTS(
@@ -580,6 +602,73 @@ async def my_agent(ctx: JobContext):
         preemptive_generation=True,
     )
 
+    # Track user interactions or tool calls for outcome tracking
+    @ctx.room.on("data_received")
+    def _on_room_data_received(data_packet):
+        logger.info(f"[EVENT LOG] room data_received fired: participant={getattr(data_packet, 'participant', None)}")
+        call_state["has_user_spoken"] = True
+
+    @session.on("user_input_transcribed")
+    def _on_user_input_transcribed(ev):
+        transcript = getattr(ev, "transcript", "")
+        is_final = getattr(ev, "is_final", False)
+        logger.info(f"[EVENT LOG] user_input_transcribed fired: transcript='{transcript}', is_final={is_final}")
+        if transcript.strip():
+            call_state["has_user_spoken"] = True
+
+    @session.on("user_state_changed")
+    def _on_user_state_changed(ev):
+        new_state = getattr(ev, "new_state", "")
+        logger.info(f"[EVENT LOG] user_state_changed fired: old={getattr(ev, 'old_state', '')}, new={new_state}")
+        if new_state == "speaking":
+            call_state["has_user_spoken"] = True
+
+    @session.on("conversation_item_added")
+    def _on_conversation_item_added(ev):
+        item = getattr(ev, "item", None)
+        role = getattr(item, "role", None)
+        role_str = str(role).lower() if role else ""
+        logger.info(f"[EVENT LOG] conversation_item_added fired: role={role_str}, item={item}")
+        if role_str == "user":
+            call_state["has_user_spoken"] = True
+        elif role_str == "assistant":
+            # Once the agent successfully delivers a response to the caller AFTER user has spoken,
+            # mark as answered_directly if not already set to escalation
+            if call_state["has_user_spoken"] and call_state["outcome"] != "success":
+                call_state["outcome"] = "success"
+                call_state["reason"] = "answered_directly"
+                logger.info(f"[EVENT LOG] Outcome updated to SUCCESS (answered_directly)")
+
+    @session.on("tool_executed")
+    def _on_tool_executed(event):
+        # Check tool execution results for escalation status
+        tool_name = getattr(event, "tool_name", "") or getattr(getattr(event, "tool", None), "__name__", "")
+        result = getattr(event, "result", None)
+        logger.info(f"[EVENT LOG] tool_executed fired: tool_name={tool_name}, result={result}")
+        if "escalation" in str(tool_name).lower() or (isinstance(result, dict) and "reference_id" in result):
+            if isinstance(result, dict) and result.get("status") == "created":
+                call_state["outcome"] = "success"
+                call_state["reason"] = "escalated"
+                logger.info(f"[EVENT LOG] Outcome updated to SUCCESS (escalated)")
+            elif isinstance(result, dict) and result.get("status") == "failed":
+                call_state["outcome"] = "failed"
+                call_state["reason"] = "escalation_failed"
+
+    @session.on("close")
+    def _on_session_close(close_event):
+        t0 = datetime.now(timezone.utc).isoformat()
+        reason = getattr(close_event, "reason", "")
+        reason_str = str(reason).lower()
+        logger.info(f"[TIMESTAMP DEBUG 1a] session.close fired at {t0}: reason={reason_str}")
+        if call_state["outcome"] != "success":
+            if "user_initiated" in reason_str or "participant_disconnected" in reason_str:
+                call_state["reason"] = "ended_early"
+            elif "error" in reason_str:
+                call_state["reason"] = "dropped"
+            else:
+                call_state["reason"] = "ended_early"
+        t_classified = datetime.now(timezone.utc).isoformat()
+        logger.info(f"[TIMESTAMP DEBUG 1b] classification complete at {t_classified}: outcome={call_state['outcome']}, reason={call_state['reason']}")
     # --------------------------------------------------------
     # Start session
     # --------------------------------------------------------

@@ -129,3 +129,36 @@ async def test_day2_completion_tests() -> None:
     # 3. Check language control covers code-mixing (Hinglish)
     assert "HINGLISH RULE" in SYSTEM_PROMPT
 
+
+def test_outcome_tracking_has_user_spoken_flag() -> None:
+    """Verify that agent_speech_committed does not mark success if user has not spoken yet."""
+    call_state = {
+        "outcome": "failed",
+        "reason": "dropped",
+        "has_user_spoken": False,
+    }
+
+    def _on_speech_committed(msg=None):
+        if call_state["has_user_spoken"] and call_state["outcome"] != "success":
+            call_state["outcome"] = "success"
+            call_state["reason"] = "answered_directly"
+
+    def _on_user_input_transcribed(transcript):
+        if transcript.strip():
+            call_state["has_user_spoken"] = True
+
+    # 1. Opening greeting speech committed before user speaks -> remains failed/dropped
+    _on_speech_committed()
+    assert call_state["outcome"] == "failed"
+    assert call_state["reason"] == "dropped"
+
+    # 2. User speaks
+    _on_user_input_transcribed("Hello, what is PMJDY?")
+    assert call_state["has_user_spoken"] is True
+
+    # 3. Agent response speech committed after user speaks -> marks as success/answered_directly
+    _on_speech_committed()
+    assert call_state["outcome"] == "success"
+    assert call_state["reason"] == "answered_directly"
+
+

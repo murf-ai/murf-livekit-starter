@@ -13,7 +13,7 @@ DB_PATH = Path(__file__).parent / "caller_memory.db"
 
 
 def init_db(db_path: Path = DB_PATH) -> None:
-    """Initialize SQLite database schema for caller memory persistence."""
+    """Initialize SQLite database schema for caller memory and call outcome tracking."""
     with sqlite3.connect(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -23,6 +23,14 @@ def init_db(db_path: Path = DB_PATH) -> None:
                 language_preference TEXT,
                 facts TEXT,
                 last_interaction TEXT
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS call_outcomes (
+                call_id TEXT PRIMARY KEY,
+                timestamp TEXT,
+                outcome TEXT,
+                outcome_reason TEXT
             )
         """)
         conn.commit()
@@ -155,3 +163,64 @@ async def save_caller_memory(
         language_preference=language_preference,
         new_facts=facts_to_remember
     )
+
+
+def log_call_outcome(
+    call_id: str,
+    outcome: str,
+    outcome_reason: str,
+    db_path: Path = DB_PATH
+) -> None:
+    """Logs call outcome metadata using INSERT OR REPLACE to prevent duplicate primary key crashes."""
+    t_start = datetime.now(timezone.utc).isoformat()
+    init_db(db_path)
+    now_str = datetime.now(timezone.utc).isoformat()
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO call_outcomes (call_id, timestamp, outcome, outcome_reason)
+            VALUES (?, ?, ?, ?)
+        """, (call_id, now_str, outcome, outcome_reason))
+        conn.commit()
+    t_written = datetime.now(timezone.utc).isoformat()
+    logger.info(f"[TIMESTAMP DEBUG 1c] DB write completed at {t_written} (started at {t_start}) for {call_id}: outcome={outcome}, reason={outcome_reason}")
+    try:
+        from ws_server import broadcast_outcome
+        broadcast_outcome({
+            "call_id": call_id,
+            "timestamp": now_str,
+            "outcome": outcome,
+            "outcome_reason": outcome_reason,
+        })
+    except Exception as e:
+        logger.warning(f"WS broadcast error: {e}")
+    logger.info(f"[TIMESTAMP DEBUG 1d] Broadcast event triggered at {t_written}")
+
+
+def get_call_stats(db_path: Path = DB_PATH) -> Dict[str, Any]:
+    """Retrieves call outcome stats (total_calls, successful_calls, failed_calls, details)."""
+    init_db(db_path)
+    with sqlite3.connect(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM call_outcomes")
+        total_calls = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM call_outcomes WHERE outcome = 'success'")
+        successful_calls = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM call_outcomes WHERE outcome = 'failed'")
+        failed_calls = cursor.fetchone()[0]
+
+        cursor.execute("SELECT call_id, timestamp, outcome, outcome_reason FROM call_outcomes ORDER BY timestamp DESC LIMIT 50")
+        rows = cursor.fetchall()
+        records = [
+            {"call_id": r[0], "timestamp": r[1], "outcome": r[2], "outcome_reason": r[3]}
+            for r in rows
+        ]
+
+    return {
+        "total_calls": total_calls,
+        "successful_calls": successful_calls,
+        "failed_calls": failed_calls,
+        "records": records,
+    }

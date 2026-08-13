@@ -41,4 +41,4 @@ async def test_check_scheme_eligibility_failure_handling(monkeypatch):
             approximate_annual_income=300000,
             has_bank_account=True,
         )
-        assert result == "I'm not able to check live eligibility data right now, but based on what I know, here's my best guidance — please confirm with your bank or the official scheme portal."
+        assert result == "I'm not able to check live eligibility data right now, but based on what I know, here's my best guidance. Please confirm with your bank or the official scheme portal."

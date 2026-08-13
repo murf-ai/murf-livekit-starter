@@ -1,5 +1,6 @@
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ShieldCheck, PhoneCall, RefreshCw, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, PhoneCall, RefreshCw, AlertTriangle, LayoutDashboard } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export type WelcomeViewState = 'READY' | 'CONNECTING' | 'CALL_ENDED' | 'MIC_ERROR';
@@ -35,7 +36,7 @@ export const WelcomeView = ({
         initial={{ opacity: 0, y: -15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: 'easeOut' }}
-        className="z-10 w-full max-w-4xl flex items-center justify-between py-4 px-6 rounded-2xl bg-[#1C2B40]/60 backdrop-blur-md border border-white/10 shadow-lg shadow-[#2F9E7C]/5"
+        className="z-20 relative w-full max-w-4xl flex items-center justify-between py-4 px-6 rounded-2xl bg-[#1C2B40]/60 backdrop-blur-md border border-white/10 shadow-lg shadow-[#2F9E7C]/5"
       >
         <div className="flex items-center space-x-3">
           <div className="size-9 rounded-xl bg-[#0F1B2D]/80 border border-[#2F9E7C]/30 flex items-center justify-center text-[#2F9E7C] shadow-inner">
@@ -46,9 +47,18 @@ export const WelcomeView = ({
             <p className="text-xs text-[#8A97A8]">Private Banking & Financial Guidance</p>
           </div>
         </div>
-        <div className="flex items-center space-x-2 bg-[#0F1B2D]/60 px-3 py-1.5 rounded-full border border-white/5">
-          <span className="inline-block size-2 rounded-full bg-[#2F9E7C] animate-pulse"></span>
-          <span className="text-xs font-mono text-[#8A97A8] tracking-wider uppercase">Encrypted 256-Bit</span>
+        <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2 bg-[#0F1B2D]/60 px-3 py-1.5 rounded-full border border-white/5">
+            <span className="inline-block size-2 rounded-full bg-[#2F9E7C] animate-pulse"></span>
+            <span className="text-xs font-mono text-[#8A97A8] tracking-wider uppercase">Encrypted 256-Bit</span>
+          </div>
+          <Link
+            href="/dashboard"
+            className="flex items-center space-x-1.5 bg-[#0F1B2D]/60 hover:bg-[#1C2B40] text-[#EDEDE6] hover:text-[#2F9E7C] px-3 py-1.5 rounded-full border border-white/5 hover:border-[#2F9E7C]/40 text-xs font-mono tracking-wider uppercase transition-all cursor-pointer"
+          >
+            <LayoutDashboard className="size-3.5 text-[#2F9E7C]" />
+            <span>Dashboard</span>
+          </Link>
         </div>
       </motion.header>
 
@@ -131,14 +141,23 @@ export const WelcomeView = ({
               Your voice session with FinSafe Assistant has closed. No sensitive credentials were saved.
             </p>
 
-            <Button
-              size="lg"
-              onClick={onStartAgain || onStartCall}
-              className="bg-[#1C2B40]/90 hover:bg-[#1C2B40] border border-[#2F9E7C]/40 text-[#2F9E7C] font-semibold text-sm px-8 py-6 rounded-full transition-all cursor-pointer hover:scale-105 active:scale-95 flex items-center space-x-2"
-            >
-              <RefreshCw className="size-4 mr-2" />
-              Start New Call
-            </Button>
+            <div className="flex items-center space-x-3">
+              <Button
+                size="lg"
+                onClick={onStartAgain || onStartCall}
+                className="bg-[#1C2B40]/90 hover:bg-[#1C2B40] border border-[#2F9E7C]/40 text-[#2F9E7C] font-semibold text-sm px-6 py-6 rounded-full transition-all cursor-pointer hover:scale-105 active:scale-95 flex items-center space-x-2"
+              >
+                <RefreshCw className="size-4 mr-2" />
+                Start New Call
+              </Button>
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center justify-center bg-[#2F9E7C]/15 hover:bg-[#2F9E7C]/25 border border-[#2F9E7C]/50 text-[#EDEDE6] font-semibold text-sm px-6 py-3.5 rounded-full transition-all cursor-pointer hover:scale-105 active:scale-95 space-x-2"
+              >
+                <LayoutDashboard className="size-4 mr-1.5 text-[#2F9E7C]" />
+                <span>Dashboard</span>
+              </Link>
+            </div>
           </motion.div>
         )}
 
