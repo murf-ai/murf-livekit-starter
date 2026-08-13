@@ -1,18 +1,18 @@
 'use client';
 
 import React, { useState } from 'react';
-import { 
-  ShieldCheck, 
-  Lock, 
-  AlertOctagon, 
-  HelpCircle, 
-  Award, 
-  Check, 
-  X, 
-  RefreshCcw, 
-  ArrowRight, 
+import {
+  AlertOctagon,
+  ArrowRight,
+  Award,
+  Check,
   Download,
-  Info
+  HelpCircle,
+  Info,
+  Lock,
+  RefreshCcw,
+  ShieldCheck,
+  X,
 } from 'lucide-react';
 
 interface Question {
@@ -27,23 +27,23 @@ const SAFETY_TIPS = [
   {
     title: 'Never Share OTPs or PINs',
     desc: 'OTPs (One Time Passwords) and UPI/ATM PINs are highly confidential. Bank officials, police, or government coordinators will NEVER ask for them.',
-    type: 'critical'
+    type: 'critical',
   },
   {
     title: 'Beware of Urgent Account Suspensions',
     desc: 'Fraudsters often create panic by claiming your bank account, SIM card, or scheme benefits will be suspended unless you pay or provide details immediately.',
-    type: 'warning'
+    type: 'warning',
   },
   {
     title: 'Verify Official Communication Channels',
     desc: 'Double check phone numbers, web addresses, and emails. Official government sites always end in ".gov.in" or ".nic.in". Official banks use verified handles.',
-    type: 'info'
+    type: 'info',
   },
   {
     title: 'Do Not Click Unknown Links',
     desc: 'Avoid clicking links in SMS or WhatsApp claiming you have won a lottery, PM loan benefit, or tax refund. These links are phishing templates designed to steal money.',
-    type: 'warning'
-  }
+    type: 'warning',
+  },
 ];
 
 const QUIZ_QUESTIONS: Question[] = [
@@ -51,12 +51,13 @@ const QUIZ_QUESTIONS: Question[] = [
     id: 1,
     text: 'A person claiming to be a Jan Sahay scheme coordinator calls and asks for your 4-digit bank OTP to transfer your pension benefit. What should you do?',
     options: [
-      'Share the OTP immediately so you don\'t miss the pension.',
+      "Share the OTP immediately so you don't miss the pension.",
       'Refuse to share, hang up, and visit your official bank branch.',
-      'Provide a wrong OTP first to check if they are real.'
+      'Provide a wrong OTP first to check if they are real.',
     ],
     correct: 1,
-    explanation: 'No official, bank clerk, or government representative will ever ask for your OTP. Sharing an OTP gives complete access to drain your bank account.'
+    explanation:
+      'No official, bank clerk, or government representative will ever ask for your OTP. Sharing an OTP gives complete access to drain your bank account.',
   },
   {
     id: 2,
@@ -64,10 +65,11 @@ const QUIZ_QUESTIONS: Question[] = [
     options: [
       'An official verification link from the government.',
       'A safe bank security protocol.',
-      'A phishing scam designed to steal your credentials.'
+      'A phishing scam designed to steal your credentials.',
     ],
     correct: 2,
-    explanation: 'This is a phishing message. Official government websites always end with .gov.in or .nic.in. The URL "pmjdy-verify.com" is fake and dangerous.'
+    explanation:
+      'This is a phishing message. Official government websites always end with .gov.in or .nic.in. The URL "pmjdy-verify.com" is fake and dangerous.',
   },
   {
     id: 3,
@@ -75,22 +77,20 @@ const QUIZ_QUESTIONS: Question[] = [
     options: [
       'Only when you are making a payment or checking your balance yourself on a trusted banking app/machine.',
       'When a bank helper on a phone call asks you to do it to "receive" cash.',
-      'When someone is transferring money to your account.'
+      'When someone is transferring money to your account.',
     ],
     correct: 0,
-    explanation: 'You only need to enter your PIN to spend/withdraw money, never to receive money. Anyone asking you to enter your PIN to "receive" funds is trying to defraud you.'
+    explanation:
+      'You only need to enter your PIN to spend/withdraw money, never to receive money. Anyone asking you to enter your PIN to "receive" funds is trying to defraud you.',
   },
   {
     id: 4,
     text: 'You suspect you have been victims of a digital banking fraud. What is the official government national helpline number to report cybercrime?',
-    options: [
-      '1930 (or cybercrime.gov.in)',
-      '100',
-      'Contact local newspaper'
-    ],
+    options: ['1930 (or cybercrime.gov.in)', '100', 'Contact local newspaper'],
     correct: 0,
-    explanation: '1930 is the official National Cyber Crime Helpline number in India. You should call it immediately within the golden hour to freeze fraudulent transfers.'
-  }
+    explanation:
+      '1930 is the official National Cyber Crime Helpline number in India. You should call it immediately within the golden hour to freeze fraudulent transfers.',
+  },
 ];
 
 export function FraudView() {
@@ -130,42 +130,45 @@ export function FraudView() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-800 font-sans p-6 md:p-8">
+    <div className="min-h-screen bg-[#f8fafc] p-6 font-sans text-slate-800 md:p-8">
       <div className="mx-auto max-w-7xl">
         {/* Title */}
-        <div className="border-b border-slate-200 pb-6 mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-[#0f294a] flex items-center gap-3">
-            <span className="p-2 rounded-xl bg-blue-50 text-[#0c538e]">
+        <div className="mb-8 border-b border-slate-200 pb-6">
+          <h1 className="flex items-center gap-3 text-2xl font-bold text-[#0f294a] md:text-3xl">
+            <span className="rounded-xl bg-blue-50 p-2 text-[#0c538e]">
               <Lock className="size-6 md:size-8" />
             </span>
             Fraud Prevention & Digital Safety
           </h1>
-          <p className="mt-1.5 text-sm md:text-base text-slate-500">
+          <p className="mt-1.5 text-sm text-slate-500 md:text-base">
             Learn safe digital banking practices and test your cyber-safety knowledge.
           </p>
         </div>
 
         {/* Safety Tips Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+        <div className="mb-10 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
           {SAFETY_TIPS.map((tip, idx) => (
-            <div 
-              key={idx} 
-              className={`bg-white border-l-4 rounded-2xl p-5 shadow-sm hover:shadow-md transition ${
-                tip.type === 'critical' ? 'border-l-rose-500' :
-                tip.type === 'warning' ? 'border-l-amber-500' : 'border-l-blue-500'
+            <div
+              key={idx}
+              className={`rounded-2xl border-l-4 bg-white p-5 shadow-sm transition hover:shadow-md ${
+                tip.type === 'critical'
+                  ? 'border-l-rose-500'
+                  : tip.type === 'warning'
+                    ? 'border-l-amber-500'
+                    : 'border-l-blue-500'
               }`}
             >
-              <div className="flex items-center gap-2.5 mb-3">
+              <div className="mb-3 flex items-center gap-2.5">
                 {tip.type === 'critical' ? (
-                  <AlertOctagon className="size-5 text-rose-500 shrink-0" />
+                  <AlertOctagon className="size-5 shrink-0 text-rose-500" />
                 ) : tip.type === 'warning' ? (
-                  <AlertOctagon className="size-5 text-amber-500 shrink-0" />
+                  <AlertOctagon className="size-5 shrink-0 text-amber-500" />
                 ) : (
-                  <Info className="size-5 text-blue-500 shrink-0" />
+                  <Info className="size-5 shrink-0 text-blue-500" />
                 )}
                 <h3 className="text-sm font-bold text-slate-800">{tip.title}</h3>
               </div>
-              <p className="text-xs md:text-sm text-slate-500 leading-relaxed font-medium">
+              <p className="text-xs leading-relaxed font-medium text-slate-500 md:text-sm">
                 {tip.desc}
               </p>
             </div>
@@ -173,16 +176,16 @@ export function FraudView() {
         </div>
 
         {/* Main Quiz & Cert Panel */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-12">
           {/* Cyber Safety Quiz Card */}
-          <div className="lg:col-span-8 bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
-              <h3 className="text-base md:text-lg font-bold text-slate-800 flex items-center gap-2">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:p-8 lg:col-span-8">
+            <div className="mb-6 flex items-center justify-between border-b border-slate-100 pb-4">
+              <h3 className="flex items-center gap-2 text-base font-bold text-slate-800 md:text-lg">
                 <HelpCircle className="size-5 text-[#0c538e]" />
                 Interactive Cyber Safety Quiz
               </h3>
               {!quizFinished && (
-                <span className="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-full">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-400">
                   Question {currentIdx + 1} of {QUIZ_QUESTIONS.length}
                 </span>
               )}
@@ -190,11 +193,11 @@ export function FraudView() {
 
             {!quizFinished ? (
               <div>
-                <p className="text-sm md:text-base font-bold text-slate-800 mb-6 leading-relaxed">
+                <p className="mb-6 text-sm leading-relaxed font-bold text-slate-800 md:text-base">
                   {activeQuestion.text}
                 </p>
 
-                <div className="space-y-3.5 mb-6">
+                <div className="mb-6 space-y-3.5">
                   {activeQuestion.options.map((opt, oIdx) => {
                     const isSelected = selectedAns === oIdx;
                     const isCorrect = oIdx === activeQuestion.correct;
@@ -206,30 +209,32 @@ export function FraudView() {
                         key={oIdx}
                         onClick={() => handleSelectOption(oIdx)}
                         disabled={showResult}
-                        className={`w-full text-left p-4 text-xs md:text-sm font-semibold rounded-2xl border transition duration-150 flex items-center justify-between gap-3 ${
+                        className={`flex w-full items-center justify-between gap-3 rounded-2xl border p-4 text-left text-xs font-semibold transition duration-150 md:text-sm ${
                           showSuccess
-                            ? 'bg-emerald-50 border-emerald-300 text-emerald-900 shadow-sm'
+                            ? 'border-emerald-300 bg-emerald-50 text-emerald-900 shadow-sm'
                             : showFail
-                            ? 'bg-rose-50 border-rose-300 text-rose-900 shadow-sm'
-                            : isSelected
-                            ? 'bg-slate-100 border-slate-400 text-slate-900'
-                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+                              ? 'border-rose-300 bg-rose-50 text-rose-900 shadow-sm'
+                              : isSelected
+                                ? 'border-slate-400 bg-slate-100 text-slate-900'
+                                : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
                         }`}
                       >
                         <span>{opt}</span>
-                        {showSuccess && <Check className="size-5 text-emerald-600 shrink-0" />}
-                        {showFail && <X className="size-5 text-rose-600 shrink-0" />}
+                        {showSuccess && <Check className="size-5 shrink-0 text-emerald-600" />}
+                        {showFail && <X className="size-5 shrink-0 text-rose-600" />}
                       </button>
                     );
                   })}
                 </div>
 
                 {showResult && (
-                  <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl mb-6">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                      {selectedAns === activeQuestion.correct ? '🎉 Correct Answer!' : '❌ Incorrect Answer'}
+                  <div className="mb-6 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                    <p className="mb-1.5 text-xs font-bold tracking-wider text-slate-400 uppercase">
+                      {selectedAns === activeQuestion.correct
+                        ? '🎉 Correct Answer!'
+                        : '❌ Incorrect Answer'}
                     </p>
-                    <p className="text-xs md:text-sm text-slate-600 leading-relaxed font-medium">
+                    <p className="text-xs leading-relaxed font-medium text-slate-600 md:text-sm">
                       {activeQuestion.explanation}
                     </p>
                   </div>
@@ -239,7 +244,7 @@ export function FraudView() {
                   <div className="flex justify-end">
                     <button
                       onClick={handleNext}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 text-xs md:text-sm font-bold text-white bg-[#0f4a73] hover:bg-[#0c538e] rounded-xl shadow transition"
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#0f4a73] px-5 py-2.5 text-xs font-bold text-white shadow transition hover:bg-[#0c538e] md:text-sm"
                     >
                       {currentIdx === QUIZ_QUESTIONS.length - 1 ? 'Finish Quiz' : 'Next Question'}
                       <ArrowRight className="size-4" />
@@ -248,21 +253,25 @@ export function FraudView() {
                 )}
               </div>
             ) : (
-              <div className="text-center py-6">
-                <div className="inline-flex p-4 rounded-3xl bg-blue-50 text-[#0c538e] mb-4">
+              <div className="py-6 text-center">
+                <div className="mb-4 inline-flex rounded-3xl bg-blue-50 p-4 text-[#0c538e]">
                   <Award className="size-12" />
                 </div>
                 <h4 className="text-xl font-extrabold text-slate-800">Quiz Completed!</h4>
-                <p className="text-slate-500 text-sm mt-1.5 font-semibold">
-                  You scored <span className="text-[#0c538e] font-bold">{score} out of {QUIZ_QUESTIONS.length}</span> questions correctly.
+                <p className="mt-1.5 text-sm font-semibold text-slate-500">
+                  You scored{' '}
+                  <span className="font-bold text-[#0c538e]">
+                    {score} out of {QUIZ_QUESTIONS.length}
+                  </span>{' '}
+                  questions correctly.
                 </p>
 
                 {score === QUIZ_QUESTIONS.length ? (
-                  <p className="mt-4 text-emerald-600 text-sm font-bold bg-emerald-50 inline-block px-4 py-2 rounded-full border border-emerald-100">
+                  <p className="mt-4 inline-block rounded-full border border-emerald-100 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-600">
                     🏆 Flawless Score! You are a Certified Safe Citizen.
                   </p>
                 ) : (
-                  <p className="mt-3 text-slate-500 text-xs font-medium">
+                  <p className="mt-3 text-xs font-medium text-slate-500">
                     Try again to get a perfect score and unlock your safety certificate!
                   </p>
                 )}
@@ -270,7 +279,7 @@ export function FraudView() {
                 <div className="mt-8 flex justify-center gap-4">
                   <button
                     onClick={handleRestart}
-                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition shadow-sm"
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
                   >
                     <RefreshCcw className="size-4" />
                     Retake Quiz
@@ -281,45 +290,56 @@ export function FraudView() {
           </div>
 
           {/* Certificate Sidebar Preview */}
-          <div className="lg:col-span-4 bg-white border border-slate-200 rounded-3xl p-6 shadow-sm text-center">
-            <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm lg:col-span-4">
+            <h3 className="mb-4 text-sm font-bold tracking-wider text-slate-500 uppercase">
               Digital Literacy Status
             </h3>
 
             {score === QUIZ_QUESTIONS.length && quizFinished ? (
-              <div className="border-2 border-dashed border-amber-300 bg-amber-50/20 rounded-2xl p-5 flex flex-col items-center">
-                <div className="size-14 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 mb-3.5">
+              <div className="flex flex-col items-center rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/20 p-5">
+                <div className="mb-3.5 flex size-14 items-center justify-center rounded-full bg-amber-100 text-amber-600">
                   <Award className="size-8" />
                 </div>
-                <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wide">Citizen Certificate</h4>
-                <p className="text-[10px] text-slate-400 mt-0.5">Jan Sahay Grievance & Safety Portal</p>
-                
-                <div className="border border-slate-200/60 bg-white w-full rounded-lg p-3 my-4 text-left shadow-sm relative overflow-hidden">
-                  <div className="absolute top-0 right-0 size-8 bg-amber-500/10 rounded-bl-full flex items-center justify-center text-amber-500">
+                <h4 className="text-xs font-bold tracking-wide text-amber-800 uppercase">
+                  Citizen Certificate
+                </h4>
+                <p className="mt-0.5 text-[10px] text-slate-400">
+                  Jan Sahay Grievance & Safety Portal
+                </p>
+
+                <div className="relative my-4 w-full overflow-hidden rounded-lg border border-slate-200/60 bg-white p-3 text-left shadow-sm">
+                  <div className="absolute top-0 right-0 flex size-8 items-center justify-center rounded-bl-full bg-amber-500/10 text-amber-500">
                     <ShieldCheck className="size-3.5" />
                   </div>
-                  <h5 className="text-[10px] font-extrabold text-[#0f294a]">CERTIFICATE OF SAFETY</h5>
-                  <p className="text-[8px] text-slate-400 mt-0.5">Awarded to you for completing the Jan Sahay Cyber-Safety test with 100% score.</p>
-                  <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-2 text-[8px] text-slate-400 font-semibold">
+                  <h5 className="text-[10px] font-extrabold text-[#0f294a]">
+                    CERTIFICATE OF SAFETY
+                  </h5>
+                  <p className="mt-0.5 text-[8px] text-slate-400">
+                    Awarded to you for completing the Jan Sahay Cyber-Safety test with 100% score.
+                  </p>
+                  <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-2 text-[8px] font-semibold text-slate-400">
                     <span>Verified: OK</span>
                     <span>13-Aug-2026</span>
                   </div>
                 </div>
 
-                <button 
+                <button
                   onClick={() => alert('Certificate downloaded successfully!')}
-                  className="w-full inline-flex items-center justify-center gap-2 py-2 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-xl transition shadow-sm"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-amber-600"
                 >
                   <Download className="size-3.5" />
                   Download PDF
                 </button>
               </div>
             ) : (
-              <div className="bg-slate-50 rounded-2xl p-6 flex flex-col items-center border border-slate-100">
-                <Lock className="size-10 text-slate-300 mb-3" />
-                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Certificate Locked</h4>
-                <p className="text-[10px] text-slate-400 mt-1 max-w-[200px]">
-                  Finish the safety quiz with a perfect 4/4 score to unlock your Cyber-Safety Citizen Badge.
+              <div className="flex flex-col items-center rounded-2xl border border-slate-100 bg-slate-50 p-6">
+                <Lock className="mb-3 size-10 text-slate-300" />
+                <h4 className="text-xs font-bold tracking-wide text-slate-500 uppercase">
+                  Certificate Locked
+                </h4>
+                <p className="mt-1 max-w-[200px] text-[10px] text-slate-400">
+                  Finish the safety quiz with a perfect 4/4 score to unlock your Cyber-Safety
+                  Citizen Badge.
                 </p>
               </div>
             )}

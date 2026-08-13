@@ -19,6 +19,12 @@ const nextConfig: NextConfig = {
       { source: '/api/calls/clear', destination: `${metrics}/api/calls/clear` },
       { source: '/api/calls', destination: `${metrics}/api/calls` },
       { source: '/api/escalations', destination: `${metrics}/api/escalations` },
+      { source: '/api/security', destination: `${metrics}/api/security` },
+      { source: '/api/threats', destination: `${metrics}/api/threats` },
+      { source: '/api/threats/ban', destination: `${metrics}/api/threats/ban` },
+      { source: '/api/manager/requests', destination: `${metrics}/api/manager/requests` },
+      { source: '/api/manager/approve', destination: `${metrics}/api/manager/approve` },
+      { source: '/api/manager/reject', destination: `${metrics}/api/manager/reject` },
     ];
   },
 };

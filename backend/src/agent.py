@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import time
+import asyncio
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -28,8 +29,10 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 import db
 import escalation
+import manager
 import metrics
 import schemes
+import threat_engine
 from prompt import SYSTEM_PROMPT
 
 logger = logging.getLogger("agent")
@@ -836,16 +839,16 @@ def _format_memory_note(caller: dict) -> str:
     facts = caller.get("facts") or {}
     last_topic = facts.get("last_topic") or ""
     ref = facts.get("last_escalation_ref") or ""
-    
+
     msg = f"{_MEMORY_PREFIX} RETURNING_CALLER (new call only): name={name}; "
     if last_topic:
         msg += f"last_topic={last_topic}; You MUST welcome them back and mention that last time you talked about {last_topic}. "
     else:
         msg += "No last topic found; Greet them simply: 'Welcome back [Name]! How can I help you today?'. "
-        
+
     if ref:
         msg += f"last_escalation_ref={ref}; You MUST mention their open case reference {ref} is under review. "
-        
+
     msg += "Do NOT say you just saved anything."
     return msg
 
@@ -1180,6 +1183,54 @@ def _prepare_pending_escalation(
     }
 
 
+_TRANSACTION_INTENT_RE = re.compile(
+    r"\b("
+    r"(?:transfer|send|check|view|do|make|perform|execute|initiate|start|run|pay)\s+(?:(?:a|an|my|the|some)\s+)*(?:money|funds|transaction|transactions|balance|payment|payments|transfer|transfers)|"
+    r"money\s+(?:transfer|send|transfer|bhejna|bhejo)|"
+    r"fund\s+transfer|transfer\s+funds|transaction\s+details|transaction\s+history|recent\s+transactions|"
+    r"paise?\s+bhejo|paise?\s+transfer|paisa?\s+bhejna|paisa?\s+transfer|transaction\s+dekho|transaction\s+batao|balance\s+transfer|transfer\s+karo|"
+    r"send\s+money|send\s+funds|transfer\s+money|transfer\s+funds|check\s+balance|check\s+transaction|view\s+transaction|"
+    r"transaction\s+(?:karna\s+hai|karo|do|make|perform|execute|bhejna|bhejo)|"
+    r"payment\s+(?:do|make|perform|execute|karna|karo|bhejna|bhejo)|"
+    r"balance\s+(?:check|batao|dekho|transfer|check\s+karna|check\s+karo)|"
+    r"paise\s+bhejna\s+hai|make\s+payment|do\s+payment|"
+    r"(?:send|transfer|bhejo|pay|transfer\s+of)\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|lakh|crore|paise|rs|rupees|usd)\b"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_ACCOUNT_CREATION_INTENT_RE = re.compile(
+    r"\b("
+    r"(?:add|create|open|register|make|setup|sign)\s+(?:(?:a|an|my|new|another|the|bank|user)\s+)*(?:account|id|profile|up)|"
+    r"account\s+(?:creation|registration|banana|kholna|kholne|add|create|register|open|setup|make|banana\s+hai|kholna\s+hai)|"
+    r"id\s+(?:creation|registration|banana|create|add|register|banana\s+hai)|"
+    r"profile\s+(?:creation|registration|banana|create|add|register|banana\s+hai)|"
+    r"new\s+account|register\s+me|register\s+my\s+details"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_CHECK_ACCOUNT_EXIST_RE = re.compile(
+    r"\b("
+    r"does\s+(?:my\s+)?account\s+exist|is\s+(?:my\s+)?account\s+(?:active|registered|there)|"
+    r"account\s+exists\s+or\s+not|mera\s+account\s+hai\s+(?:kya|nahi)|"
+    r"account\s+hai\s+kya|id\s+hai\s+kya|check\s+(?:my\s+)?account\s+status"
+    r")\b",
+    re.IGNORECASE,
+)
+
+_CHECK_APPROVAL_STATUS_RE = re.compile(
+    r"\b("
+    r"did\s+(?:the\s+)?manager\s+(?:approve|confirm|reject|deny|decide)|"
+    r"is\s+(?:my\s+)?(?:account|transaction|request|id)\s+(?:approved|confirmed|rejected|active|pending)|"
+    r"manager\s+(?:approval\s+status|decision)|"
+    r"has\s+(?:the\s+)?(?:account|transaction|request)\s+been\s+(?:approved|confirmed|rejected|activated)|"
+    r"approval\s+mila\s+kya|approve\s+hua\s+kya|status\s+kya\s+hai"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(
@@ -1203,12 +1254,118 @@ class Assistant(Agent):
         self._awaiting_name_or_ref_for_recall = False
         self._call_room_id: str | None = None
         self._last_user_final_at: float | None = None
+        self._threat_scorer: threat_engine.ThreatScorer | None = None
+        self._awaiting_verification_challenge: bool = False
+        self._verification_expected_answer: str | None = None
+        self._awaiting_safe_key_verification: bool = False
+        self._safe_key_attempts_remaining: int = 3
+        self._safe_key_pending_intent: str | None = None
+        self._safe_key_request_id: str | None = None
+        self._awaiting_account_creation: bool = False
+        self._account_creation_step: str = "NAME"
+        self._new_account_name: str | None = None
+        self._new_account_safe_key: str | None = None
+        self._awaiting_name_for_existence_check: bool = False
+        self._awaiting_name_ambiguity_resolution: bool = False
+        self._candidate_name_switch: str | None = None
+        self._pending_activation_request_id: str | None = None
+
+    def get_threat_scorer(self) -> threat_engine.ThreatScorer:
+        if self._threat_scorer is None:
+            room = self._call_room_id or "default_room"
+            self._threat_scorer = threat_engine.ThreatScorer(room)
+        return self._threat_scorer
+
+    @property
+    def session(self) -> AgentSession:
+        if hasattr(self, "_session") and self._session is not None:
+            return self._session
+        return super().session
+
+    def start_manager_status_polling(self, reply_lang: str) -> None:
+        """Start background polling task for manager approval/rejection if not already running."""
+        if hasattr(self, "_polling_task") and self._polling_task and not self._polling_task.done():
+            return
+        self._polling_task = asyncio.create_task(self._poll_manager_status(reply_lang))
+
+    async def _poll_manager_status(self, reply_lang: str) -> None:
+        """Poll the database for pending approval/rejection updates."""
+        logger.info("Starting background manager status polling for session.")
+        while self.session and not self.session.room.connection_state == rtc.ConnectionState.CONN_DISCONNECTED:
+            await asyncio.sleep(2.0)
+
+            # 1. Check transaction transfer request
+            if self._safe_key_request_id:
+                try:
+                    reqs = manager.list_manager_requests(db_path=None)
+                    match = next((r for r in reqs if r["request_id"] == self._safe_key_request_id), None)
+                    if match:
+                        status = match.get("status")
+                        if status == "APPROVED":
+                            msg = (
+                                "Your transaction has been approved by Senior Manager X and processed successfully!"
+                                if reply_lang == "en"
+                                else "Aapka transaction Senior Manager X dwara approve kar diya gaya hai aur processed ho chuka hai!"
+                            )
+                            await self.session.say(msg, allow_interruptions=True)
+                            self._safe_key_request_id = None
+                        elif status == "REJECTED":
+                            msg = (
+                                "I'm sorry, Senior Manager X has rejected your transaction request. This call will now end."
+                                if reply_lang == "en"
+                                else "Kripya dhyan dein, Senior Manager X ne aapki transaction request ko reject kar diya hai. Yeh call ab samaapt ho jayegi."
+                            )
+                            await self.session.say(msg, allow_interruptions=False)
+                            self._safe_key_request_id = None
+                            await asyncio.sleep(4.0)
+                            await self.session.close()
+                            break
+                except Exception as err:
+                    logger.warning("Error polling transaction status: %s", err)
+
+            # 2. Check account activation request
+            if hasattr(self, "_pending_activation_request_id") and self._pending_activation_request_id:
+                try:
+                    reqs = manager.list_manager_requests(db_path=None)
+                    match = next((r for r in reqs if r["request_id"] == self._pending_activation_request_id), None)
+                    if match:
+                        status = match.get("status")
+                        if status == "APPROVED":
+                            msg = (
+                                "Great news! Your account registration has been approved by the Senior Manager. Your account is now active!"
+                                if reply_lang == "en"
+                                else "Bahut badiya! Aapka account registration Senior Manager dwara approve ho gaya hai. Aapka account ab active hai!"
+                            )
+                            await self.session.say(msg, allow_interruptions=True)
+                            self._pending_activation_request_id = None
+                        elif status == "REJECTED":
+                            msg = (
+                                "I'm sorry, your account registration request has been rejected by the Senior Manager. This call will now end."
+                                if reply_lang == "en"
+                                else "Kripya dhyan dein, aapka account registration request Senior Manager dwara reject kar diya hai. Yeh call ab samaapt ho jayegi."
+                            )
+                            await self.session.say(msg, allow_interruptions=False)
+                            self._pending_activation_request_id = None
+                            await asyncio.sleep(4.0)
+                            await self.session.close()
+                            break
+                except Exception as err:
+                    logger.warning("Error polling activation status: %s", err)
 
     @function_tool
     async def lookup_caller(self, ctx: RunContext, name_or_id: str) -> str:
         """Lookup stored caller on a NEW call when they give their name or ask if you remember them.
         Do NOT call this right after save_caller_memory in the same call.
         """
+        scorer = self.get_threat_scorer()
+        scorer.note_lookup_call()
+        if scorer.threat_level in (threat_engine.ThreatLevel.RESTRICT, threat_engine.ThreatLevel.BAN):
+            return json.dumps({
+                "found": False,
+                "error": "security_restriction",
+                "message": "Profile lookup is disabled due to security restrictions on this session.",
+                "instruction": "State that profile lookup is unavailable for security reasons. Ask how else to help."
+            })
         clean = (name_or_id or "").strip()
         if not clean:
             return json.dumps({"found": False, "message": "Name is required."})
@@ -1293,6 +1450,14 @@ class Assistant(Agent):
         (e.g. "Thanks, I've saved the conversation, Raj.").
         STRICT PRIVACY RULE: Do NOT store account numbers, Aadhaar, PAN, PIN, or OTP.
         """
+        scorer = self.get_threat_scorer()
+        if scorer.threat_level in (threat_engine.ThreatLevel.RESTRICT, threat_engine.ThreatLevel.BAN):
+            return json.dumps({
+                "saved": False,
+                "error": "security_restriction",
+                "message": "Saving caller memory is restricted for this session.",
+                "instruction": "State that profile saving is temporarily unavailable."
+            })
         clean_name = (name or "").strip()
         if not clean_name:
             return json.dumps({"saved": False, "message": "Name is required."})
@@ -1671,7 +1836,7 @@ class Assistant(Agent):
             )
             self._known_caller_name = clean
             self._memory_loaded = True
-            
+
             # Link any in-session escalation ticket to the caller's real identity
             if self._last_escalation_ref:
                 try:
@@ -1837,6 +2002,11 @@ class Assistant(Agent):
             self._awaiting_name_for_save
             or self._awaiting_name_or_ref_for_recall
             or self._awaiting_escalation_consent
+            or self._awaiting_safe_key_verification
+            or self._awaiting_account_creation
+            or self._awaiting_verification_challenge
+            or self._awaiting_name_for_existence_check
+            or self._awaiting_name_ambiguity_resolution
         )
         has_extracted_data = (
             bool(_extract_bare_name(text))
@@ -1847,6 +2017,9 @@ class Assistant(Agent):
             and not is_awaiting_input
             and not _wants_save(text_norm)
             and not has_extracted_data
+            and not _ACCOUNT_CREATION_INTENT_RE.search(text)
+            and not _TRANSACTION_INTENT_RE.search(text)
+            and not _CHECK_ACCOUNT_EXIST_RE.search(text)
             and (len(words) < 2 or len(text_clean) < 6)
         ):
             logger.info("Ignoring ultra-short non-greet transcript: %r", text)
@@ -1857,9 +2030,604 @@ class Assistant(Agent):
             text, self._last_stt_language, turn_ctx=turn_ctx
         )
 
+        # ── NAME AMBIGUITY RESOLUTION INTERCEPT ───────────────────
+        if self._awaiting_name_ambiguity_resolution:
+            self._awaiting_name_ambiguity_resolution = False
+            candidate = extract_caller_name(text) or _extract_bare_name(text) or text_norm
+            candidate_clean = (candidate or "").strip().lower()
+            
+            prev_name = self._known_caller_name or "Caller"
+            new_candidate = self._candidate_name_switch or "Unknown"
+            
+            # Check if they confirmed the new candidate, or stuck with the old name
+            if candidate_clean in (prev_name.lower(), new_candidate.lower()) or any(name_part in candidate_clean for name_part in prev_name.lower().split()) or any(name_part in candidate_clean for name_part in new_candidate.lower().split()):
+                # Resolved! Set their name to whichever they confirmed
+                if candidate_clean == new_candidate.lower() or any(name_part in candidate_clean for name_part in new_candidate.lower().split()):
+                    self._known_caller_name = new_candidate
+                    threat_scorer = self.get_threat_scorer()
+                    threat_scorer._names_used = [new_candidate.lower()]
+                else:
+                    self._known_caller_name = prev_name
+                    threat_scorer = self.get_threat_scorer()
+                    threat_scorer._names_used = [prev_name.lower()]
+
+                resolve_msg = (
+                    f"Thank you for clarifying, {self._known_caller_name}. Let's continue."
+                    if reply_lang == "en"
+                    else f"Clarify karne ke liye dhanyavad, {self._known_caller_name}. Aaiye aage badhte hain."
+                )
+
+                # Load memory profile for the resolved name from DB
+                resolved_profile = db.get_caller(self._known_caller_name) or (
+                    db.get_caller(self._known_caller_name.title()) if self._known_caller_name.isascii() else None
+                ) or db.get_caller(self._known_caller_name.lower())
+                if resolved_profile:
+                    self._memory_loaded = True
+                    self._welcomed_this_session = True
+                    facts = resolved_profile.get("facts") or {}
+                    if facts.get("last_topic"):
+                        self._last_user_topic = str(facts["last_topic"])
+                    if facts.get("last_escalation_ref"):
+                        self._last_escalation_ref = str(facts["last_escalation_ref"])
+                    # Override the resolve_msg with a proper welcome-back that includes memory
+                    resolve_msg = _welcome_back_line(resolved_profile, reply_lang)
+                    turn_ctx.add_message(
+                        role="system", content=_format_memory_note(resolved_profile)
+                    )
+                    logger.info(
+                        "Ambiguity resolved with memory recall: name=%s topic=%s",
+                        self._known_caller_name, facts.get("last_topic"),
+                    )
+
+                try:
+                    await self.session.say(resolve_msg, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak ambiguity resolution: %s", err)
+                raise StopResponse()
+            else:
+                # Still ambiguous or keep changing names! BAN!
+                self._known_caller_name = "Banned"
+                threat_scorer = self.get_threat_scorer()
+                threat_scorer.force_ban(reason="Multiple identity switches and name ambiguity unresolved")
+                ban_msg = (
+                    "Identity verification failed. Access has been restricted due to multiple identity changes."
+                    if reply_lang == "en"
+                    else "Identity verification asafal raha. Bahut baar identity badalne ke karan access restrict kar diya gaya hai."
+                )
+                try:
+                    await self.session.say(ban_msg, allow_interruptions=False)
+                except Exception as err:
+                    logger.warning("Could not speak ambiguity ban msg: %s", err)
+                raise StopResponse()
+
+        # Check for initial name ambiguity detection
+        # (Only if they use an explicit introduction phrase and have an already set caller name)
+        extracted = extract_caller_name(text)
+        if extracted and self._known_caller_name and self._known_caller_name.lower() != "caller" and extracted.lower() != "caller":
+            if extracted.lower() != self._known_caller_name.lower() and not self._awaiting_name_ambiguity_resolution:
+                self._awaiting_name_ambiguity_resolution = True
+                self._candidate_name_switch = extracted
+                
+                prompt_ambiguity = (
+                    f"I noticed you previously introduced yourself as {self._known_caller_name}, but now mentioned {extracted}. Can you tell me your exact registered profile name?"
+                    if reply_lang == "en"
+                    else f"Maine dhyan diya ki aapne pehle apna naam {self._known_caller_name} bataya tha, lekin ab {extracted} kaha. Kya aap mujhe apna exact registered profile naam bata sakte hain?"
+                )
+                logger.warning("Identity ambiguity detected: %s vs %s", self._known_caller_name, extracted)
+                try:
+                    await self.session.say(prompt_ambiguity, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak name ambiguity prompt: %s", err)
+                raise StopResponse()
+
+        # ── MANAGER APPROVAL STATUS CHECK INTERCEPT ──────────────
+        if _CHECK_APPROVAL_STATUS_RE.search(text):
+            status_spoken = False
+            if self._known_caller_name and self._known_caller_name.lower() not in ("caller", "unknown"):
+                try:
+                    reqs = manager.list_manager_requests(db_path=None)
+                    user_reqs = [r for r in reqs if r.get("requester_name", "").lower() == self._known_caller_name.lower()]
+                    if user_reqs:
+                        latest = user_reqs[-1]
+                        status = latest.get("status")
+                        
+                        if status == "APPROVED":
+                            msg = (
+                                "Yes, Senior Manager X has approved your request."
+                                if reply_lang == "en"
+                                else "Haan, Senior Manager X ne aapki request approve kar di hai."
+                            )
+                        elif status == "REJECTED":
+                            msg = (
+                                "No, Senior Manager X has rejected your request."
+                                if reply_lang == "en"
+                                else "Nahi, Senior Manager X ne aapki request reject kar di hai."
+                            )
+                        else:
+                            msg = (
+                                "No, it has not been approved yet. It is still pending manager review."
+                                if reply_lang == "en"
+                                else "Nahi, abhi approve nahi hua hai. Yeh Senior Manager ke review ke liye pending hai."
+                            )
+                        
+                        await self.session.say(msg, allow_interruptions=True)
+                        status_spoken = True
+                except Exception as err:
+                    logger.warning("Error checking manager request status: %s", err)
+            
+            if not status_spoken:
+                msg = (
+                    "No, I couldn't find any transaction or registration requests under your name."
+                    if reply_lang == "en"
+                    else "Nahi, mujhe aapke naam par koi transaction ya registration request nahi mili."
+                )
+                try:
+                    await self.session.say(msg, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak fallback status: %s", err)
+            raise StopResponse()
+
+        # ── REAL-TIME THREAT INTELLIGENCE & SECURITY SCORING ─────
+        threat_scorer = self.get_threat_scorer()
+        is_awaiting_name = (
+            self._awaiting_name_for_save
+            or self._awaiting_name_for_existence_check
+            or (self._awaiting_account_creation and self._account_creation_step == "NAME")
+        )
+        turn_result = threat_scorer.score_turn(text, is_awaiting_name=is_awaiting_name)
+
+        # 1. Enforce BANS
+        if turn_result.action == threat_engine.ThreatAction.BAN_SESSION or threat_scorer.is_banned:
+            ban_msg = (
+                "Self-service security protocol activated. Access has been restricted due to security policy violations."
+                if reply_lang == "en"
+                else "Suraksha protocol ke tehat is session ko block kar diya gaya hai."
+            )
+            logger.critical("Blocking banned caller in room %s", self._call_room_id)
+            try:
+                await self.session.say(ban_msg, allow_interruptions=False)
+            except Exception as err:
+                logger.warning("Could not speak ban notice: %s", err)
+            raise StopResponse()
+
+        # 2. Process active Verification Challenge if awaiting
+        if self._awaiting_verification_challenge and self._verification_expected_answer:
+            self._awaiting_verification_challenge = False
+            expected = self._verification_expected_answer
+            self._verification_expected_answer = None
+            if threat_engine.verify_challenge_answer(text, expected):
+                logger.info("Caller verification challenge PASSED")
+                ack = (
+                    "Thank you for confirming your identity. How can I help you?"
+                    if reply_lang == "en"
+                    else "Dhanyavad identity confirm karne ke liye. Main aapki kya madad karoon?"
+                )
+                try:
+                    await self.session.say(ack, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak challenge pass: %s", err)
+                raise StopResponse()
+            else:
+                logger.warning("Caller verification challenge FAILED")
+                threat_scorer.record_verification_failure()
+                fail_msg = (
+                    "Security verification failed. Profile features have been restricted for this session."
+                    if reply_lang == "en"
+                    else "Suraksha verification safal nahi hua. Profile features restrict kar diye gaye hain."
+                )
+                try:
+                    await self.session.say(fail_msg, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak challenge fail: %s", err)
+                raise StopResponse()
+
+        # 3. Trigger Verification Challenge if ThreatAction == CHALLENGE
+        if turn_result.action == threat_engine.ThreatAction.CHALLENGE and self._known_caller_name:
+            caller_rec = db.get_caller(self._known_caller_name)
+            if caller_rec and caller_rec.get("facts"):
+                ch = threat_engine.generate_challenge_question(caller_rec["facts"], reply_lang)
+                if ch:
+                    q_text, expected_ans = ch
+                    self._awaiting_verification_challenge = True
+                    self._verification_expected_answer = expected_ans
+                    logger.info("Issuing threat verification challenge for %s", self._known_caller_name)
+                    try:
+                        await self.session.say(q_text, allow_interruptions=True)
+                    except Exception as err:
+                        logger.warning("Could not speak challenge question: %s", err)
+                    raise StopResponse()
+
+        # ── 4. SAFE KEY TRANSACTION SECURITY INTERCEPT ─────────────
+        if self._awaiting_safe_key_verification:
+            # 1. Extract any candidate name stated in this turn
+            candidate_name = extract_caller_name(text)
+            
+            # 2. Try to lookup profile by Safe Key from the cleaned text (substring/word check)
+            matching_profile = db.get_caller_by_safe_key_in_text(text_clean)
+
+            is_valid_key = False
+            identity_mismatch = False
+
+            if matching_profile:
+                profile_name = matching_profile.get("name")
+                session_name = self._known_caller_name
+
+                # Check if there is an identity name mismatch:
+                # a) The session's established caller name does not match the key owner
+                # b) The name stated in this turn does not match the key owner
+                name_mismatch = False
+                if session_name and session_name.lower() not in ("caller", "unknown", "banned") and session_name.lower() != profile_name.lower():
+                    name_mismatch = True
+                if candidate_name and candidate_name.lower() not in ("caller", "unknown", "banned") and candidate_name.lower() != profile_name.lower():
+                    name_mismatch = True
+
+                if name_mismatch:
+                    identity_mismatch = True
+                else:
+                    is_valid_key = True
+                    self._known_caller_name = profile_name
+
+            if identity_mismatch:
+                self._awaiting_safe_key_verification = False
+                self._known_caller_name = "Banned"
+                threat_scorer.force_ban(reason="Identity mismatch during verification: Session/Input name does not match Safe Key owner.")
+                
+                # Speak ban notice and disconnect
+                ban_msg = (
+                    "Security protocol activated. Access has been restricted due to identity verification mismatch."
+                    if reply_lang == "en"
+                    else "Suraksha protocol sakriya kiya gaya hai. Identity verification mismatch ke karan access restrict kar diya gaya hai."
+                )
+                try:
+                    await self.session.say(ban_msg, allow_interruptions=False)
+                except Exception as err:
+                    logger.warning("Could not speak mismatch ban notice: %s", err)
+                
+                # Close the session after short delay
+                await asyncio.sleep(4.0)
+                try:
+                    await self.session.close()
+                except Exception as err:
+                    logger.warning("Could not close session after mismatch ban: %s", err)
+                raise StopResponse()
+
+            if is_valid_key:
+                self._awaiting_safe_key_verification = False
+                self._safe_key_attempts_remaining = 3
+                req_name = self._known_caller_name or "Verified Caller"
+                try:
+                    escalation.create_escalation(
+                        user_id=req_name.lower().replace(" ", "_"),
+                        issue_description=f"Safe Key verified transaction request: {self._safe_key_pending_intent or text}",
+                        user_consent=True,
+                        trigger_type="complex_decision",
+                        urgency="high",
+                        requester_name=req_name,
+                        preferred_language=reply_lang,
+                        follow_up_method="voice_callback",
+                    )
+                    used_key = ""
+                    if matching_profile and matching_profile.get("facts"):
+                        used_key = matching_profile["facts"].get("safe_key", "")
+                    if not used_key:
+                        used_key = text_clean
+
+                    if self._safe_key_request_id:
+                        manager.update_manager_request(
+                            self._safe_key_request_id,
+                            status="PENDING_APPROVAL",
+                            resolution_notes="Safe Key verified by caller. Awaiting Manager Manual Approval.",
+                            safe_key=used_key,
+                            details={"intent": self._safe_key_pending_intent or text, "status": "SAFE_KEY_VERIFIED"},
+                        )
+                    else:
+                        req = manager.create_manager_request(
+                            request_type="TRANSACTION_TRANSFER",
+                            requester_name=req_name,
+                            safe_key=used_key,
+                            details={"intent": self._safe_key_pending_intent or text, "status": "SAFE_KEY_VERIFIED"},
+                        )
+                        self._safe_key_request_id = req.get("request_id")
+                    try:
+                        db.save_caller(
+                            user_id=req_name.lower().replace(" ", "_"),
+                            name=req_name,
+                            language_preference=reply_lang,
+                            facts={"last_topic": "money transfer transaction"},
+                            consent_given=True,
+                        )
+                        self._last_user_topic = "money transfer transaction"
+                    except Exception as err:
+                        logger.warning("Could not save caller memory for Safe Key transaction success: %s", err)
+
+                    self.start_manager_status_polling(reply_lang)
+                except Exception as err:
+                    logger.warning("Could not update manager request for safe key success: %s", err)
+
+                success_msg = (
+                    f"Thank you {req_name}! Your Safe Key has been verified. "
+                    "I have forwarded your request to Senior Manager X on the Manager Portal for manual approval. He will be in touch with you shortly!"
+                    if reply_lang == "en"
+                    else f"Dhanyavad {req_name}! Aapka Safe Key verify ho gaya hai. "
+                    "Maine aapki request Manager Portal par Senior Manager X ko manual approval ke liye bhej di hai. Voh jald hi contact karenge!"
+                )
+                logger.info("Safe Key verification SUCCESS for %s — forwarded to Manager X", req_name)
+                try:
+                    await self.session.say(success_msg, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak safe key success: %s", err)
+                raise StopResponse()
+            else:
+                self._safe_key_attempts_remaining -= 1
+                threat_scorer.record_verification_failure()
+                logger.warning(
+                    "Safe Key verification FAILED in room %s. Remaining attempts: %d",
+                    self._call_room_id,
+                    self._safe_key_attempts_remaining,
+                )
+
+                # Update manager request with failed attempt details!
+                if self._safe_key_request_id:
+                    try:
+                        manager.update_manager_request(
+                            self._safe_key_request_id,
+                            resolution_notes=f"Verification failed. Attempts remaining: {self._safe_key_attempts_remaining}.",
+                            details={
+                                "intent": self._safe_key_pending_intent or text,
+                                "status": f"FAILED_ATTEMPT (Attempts remaining: {self._safe_key_attempts_remaining})",
+                                "failed_input": text
+                            }
+                        )
+                    except Exception as err:
+                        logger.warning("Could not update manager request for safe key failure: %s", err)
+
+                if self._safe_key_attempts_remaining > 0:
+                    retry_msg = (
+                        f"Invalid Safe Key. You have {self._safe_key_attempts_remaining} attempt(s) remaining. "
+                        "Please state your registered Safe Key or profile name."
+                        if reply_lang == "en"
+                        else f"Galat Safe Key. Aapke paas {self._safe_key_attempts_remaining} koshish baaki hain. "
+                        "Kripya apna registered Safe Key ya profile naam bataiye."
+                    )
+                    try:
+                        await self.session.say(retry_msg, allow_interruptions=True)
+                    except Exception as err:
+                        logger.warning("Could not speak safe key retry: %s", err)
+                    raise StopResponse()
+                else:
+                    self._awaiting_safe_key_verification = False
+                    threat_scorer.force_ban(reason="3 failed Safe Key verification attempts for transaction request")
+                    
+                    # Update manager request to show REJECTED / BANNED
+                    if self._safe_key_request_id:
+                        try:
+                            manager.update_manager_request(
+                                self._safe_key_request_id,
+                                status="REJECTED",
+                                resolution_notes="Transaction rejected. Session BANNED due to 3 failed verification attempts.",
+                                details={
+                                    "intent": self._safe_key_pending_intent or text,
+                                    "status": "REJECTED_BANNED",
+                                    "failed_input": text
+                                }
+                            )
+                        except Exception as err:
+                            logger.warning("Could not update manager request for safe key ban: %s", err)
+
+                    ban_msg = (
+                        "Security verification failed after 3 attempts. Safe Key protocol activated — "
+                        "access to this session has been restricted."
+                        if reply_lang == "en"
+                        else "3 koshishon ke baad suraksha verification safal nahi hua. Safe Key protocol ke tehat "
+                        "is session ko block kar diya gaya hai."
+                    )
+                    logger.critical("Banning caller after 3 failed Safe Key attempts in room %s", self._call_room_id)
+                    try:
+                        await self.session.say(ban_msg, allow_interruptions=False)
+                    except Exception as err:
+                        logger.warning("Could not speak safe key ban msg: %s", err)
+                    raise StopResponse()
+
+        if _TRANSACTION_INTENT_RE.search(text) and not self._awaiting_safe_key_verification:
+            self._awaiting_safe_key_verification = True
+            self._safe_key_attempts_remaining = 3
+            self._safe_key_pending_intent = text
+            
+            # Start a PENDING TRANSACTION request on the Manager Portal immediately!
+            req_name = self._known_caller_name or "Caller"
+            try:
+                req = manager.create_manager_request(
+                    request_type="TRANSACTION_TRANSFER",
+                    requester_name=req_name,
+                    safe_key="[Awaiting verification]",
+                    details={"intent": text, "status": "AWAITING_SAFE_KEY"},
+                )
+                self._safe_key_request_id = req.get("request_id")
+                logger.info("Created Safe Key transaction request: %s", self._safe_key_request_id)
+            except Exception as err:
+                logger.warning("Could not log Safe Key conversation start: %s", err)
+
+            prompt_msg = (
+                "For security verification on transaction requests, please tell me your Safe Key or registered profile name."
+                if reply_lang == "en"
+                else "Transaction request ke suraksha verification ke liye, kripya apna Safe Key ya registered profile naam bataiye."
+            )
+            logger.info("Transaction intent detected in room %s — initiating Safe Key verification", self._call_room_id)
+            try:
+                await self.session.say(prompt_msg, allow_interruptions=True)
+            except Exception as err:
+                logger.warning("Could not speak safe key prompt: %s", err)
+            raise StopResponse()
+
+        # ── 5. ACCOUNT CREATION FLOW ("I want to add my account") ──
+        if self._awaiting_account_creation:
+            if self._account_creation_step == "NAME":
+                name = extract_caller_name(text) or _extract_bare_name(text) or text_clean.title()
+                self._new_account_name = name.title() if name else "Caller"
+                self._known_caller_name = self._new_account_name
+                self._account_creation_step = "SAFE_KEY"
+                ask_key = (
+                    f"Great {self._new_account_name}! Please tell me your desired secret Safe Key."
+                    if reply_lang == "en"
+                    else f"Bahut badiya {self._new_account_name}! Ab kripya apna secret Safe Key bataiye."
+                )
+                try:
+                    await self.session.say(ask_key, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not ask safe key: %s", err)
+                raise StopResponse()
+
+            elif self._account_creation_step == "SAFE_KEY":
+                if db.safe_key_exists(text_clean):
+                    dup_msg = (
+                        "This Safe Key is already registered or pending approval. Please choose a different, unique Safe Key."
+                        if reply_lang == "en"
+                        else "Yeh Safe Key pehle se registered hai. Kripya koi dusra unique Safe Key bataiye."
+                    )
+                    try:
+                        await self.session.say(dup_msg, allow_interruptions=True)
+                    except Exception as err:
+                        logger.warning("Could not speak duplicate safe key notice: %s", err)
+                    raise StopResponse()
+
+                self._new_account_safe_key = text_clean
+                self._account_creation_step = "DETAILS"
+                ask_details = (
+                    "Got it! What type of account would you like to add (e.g., Savings, Current, Jan Dhan)?"
+                    if reply_lang == "en"
+                    else "Samajh gaya! Aap kaunsa account type add karna chahte hain (jaise Savings, Current, Jan Dhan)?"
+                )
+                try:
+                    await self.session.say(ask_details, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not ask account details: %s", err)
+                raise StopResponse()
+
+            elif self._account_creation_step == "DETAILS":
+                self._awaiting_account_creation = False
+                account_type = text_clean
+                req_name = self._new_account_name or "Applicant"
+                safe_key = self._new_account_safe_key or "SAFE_KEY_123"
+
+                req = manager.create_manager_request(
+                    request_type="ACCOUNT_ACTIVATION",
+                    requester_name=req_name,
+                    safe_key=safe_key,
+                    details={"account_type": account_type, "language": reply_lang},
+                )
+                self._pending_activation_request_id = req.get("request_id")
+                
+                try:
+                    db.save_caller(
+                        user_id=req_name.lower().replace(" ", "_"),
+                        name=req_name,
+                        language_preference=reply_lang,
+                        facts={"safe_key": safe_key, "account_type": account_type, "account_created": True, "last_topic": "account creation"},
+                        consent_given=True,
+                    )
+                    self._last_user_topic = "account creation"
+                except Exception as err:
+                    logger.warning("Could not save caller memory for account registration: %s", err)
+
+                self.start_manager_status_polling(reply_lang)
+
+                created_msg = (
+                    f"Thank you {req_name}! I've forwarded your conversation to the Senior Manager. When he confirms, your account will be active!"
+                    if reply_lang == "en"
+                    else f"Dhanyavad {req_name}! Maine aapki conversation Senior Manager ko bhej di hai. Unke confirm karte hi aapka account active ho jayega!"
+                )
+                logger.info("Account registration request submitted for %s (Safe Key: %s)", req_name, safe_key)
+                try:
+                    await self.session.say(created_msg, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak account creation success: %s", err)
+                raise StopResponse()
+
+        if _ACCOUNT_CREATION_INTENT_RE.search(text) and not self._awaiting_account_creation:
+            self._awaiting_account_creation = True
+            self._account_creation_step = "NAME"
+            prompt_name = (
+                "I will help you add and register your new account! Please tell me your full name to start."
+                if reply_lang == "en"
+                else "Main aapka naya account add karne mein madad karunga! Kripya shuru karne ke liye apna poora naam bataiye."
+            )
+            logger.info("Account creation intent detected in room %s", self._call_room_id)
+            try:
+                await self.session.say(prompt_name, allow_interruptions=True)
+            except Exception as err:
+                logger.warning("Could not speak account creation prompt: %s", err)
+            raise StopResponse()
+
+        # ── 6. ACCOUNT EXISTENCE CONFIRMER FLOW ───────────────────
+        if self._awaiting_name_for_existence_check:
+            self._awaiting_name_for_existence_check = False
+            candidate = extract_caller_name(text) or _extract_bare_name(text) or text_clean
+            candidate_clean = (candidate or "").strip().lower()
+
+            profile = db.get_caller(candidate_clean) or db.get_caller(candidate_clean.title())
+            if profile:
+                self._known_caller_name = profile.get("name") or candidate_clean.title()
+                exist_msg = (
+                    f"Yes, your account exists and is active under the profile name {self._known_caller_name}."
+                    if reply_lang == "en"
+                    else f"Haan, aapka account {self._known_caller_name} ke naam se active hai."
+                )
+            else:
+                exist_msg = (
+                    f"No, I could not find a registered account for the name {candidate_clean.title()}. Would you like to create one?"
+                    if reply_lang == "en"
+                    else f"Nahi, mujhe {candidate_clean.title()} ke naam se koi account nahi mila. Kya aap naya account banana chahte hain?"
+                )
+            try:
+                await self.session.say(exist_msg, allow_interruptions=True)
+            except Exception as err:
+                logger.warning("Could not speak existence check result: %s", err)
+            raise StopResponse()
+
+        if _CHECK_ACCOUNT_EXIST_RE.search(text) and not self._awaiting_name_for_existence_check:
+            if self._known_caller_name and self._known_caller_name.lower() != "caller":
+                profile = db.get_caller(self._known_caller_name) or db.get_caller(self._known_caller_name.lower())
+                if profile:
+                    exist_msg = (
+                        f"Yes, your account exists and is active under the profile name {self._known_caller_name}."
+                        if reply_lang == "en"
+                        else f"Haan, aapka account {self._known_caller_name} ke naam se active hai."
+                    )
+                else:
+                    exist_msg = (
+                        f"No, I could not find a registered account under the name {self._known_caller_name}. Would you like to create one?"
+                        if reply_lang == "en"
+                        else f"Nahi, mujhe {self._known_caller_name} ke naam se koi account nahi mila. Kya aap naya account banana chahte hain?"
+                    )
+                try:
+                    await self.session.say(exist_msg, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak existence check result: %s", err)
+                raise StopResponse()
+            else:
+                self._awaiting_name_for_existence_check = True
+                prompt_exist = (
+                    "Please tell me the profile name or Safe Key to check if the account exists."
+                    if reply_lang == "en"
+                    else "Kripya account check karne ke liye profile naam ya Safe Key bataiye."
+                )
+                try:
+                    await self.session.say(prompt_exist, allow_interruptions=True)
+                except Exception as err:
+                    logger.warning("Could not speak existence check prompt: %s", err)
+                raise StopResponse()
+        # ── END SAFE KEY TRANSACTION & ACCOUNT CREATION & EXISTENCE INTERCEPTS ─
+
         # Auto-extract and set caller name if not already known
         if not self._known_caller_name or self._known_caller_name.lower() == "caller":
-            introduced_name = extract_caller_name(text) or _extract_bare_name(text)
+            is_awaiting_name = (
+                self._awaiting_name_for_save
+                or self._awaiting_name_for_existence_check
+                or (self._awaiting_account_creation and self._account_creation_step == "NAME")
+            )
+            introduced_name = extract_caller_name(text)
+            if not introduced_name and is_awaiting_name:
+                introduced_name = _extract_bare_name(text)
             if introduced_name and introduced_name.lower() not in {"caller", "unknown"}:
                 self._known_caller_name = introduced_name
                 logger.info("Auto-extracted and set caller name: %s", introduced_name)
@@ -1998,9 +2766,17 @@ class Assistant(Agent):
             existing = self._lookup_returning_caller(text)
             name_from_text = extract_caller_name(text) or _extract_bare_name(text)
             wants_recall = _wants_recall(text_clean)
+
+            # Fallback: if user asks "do you remember me?" without re-stating
+            # their name, use the session's already-known caller name for lookup.
+            if not existing and wants_recall and self._known_caller_name and self._known_caller_name.lower() not in ("caller", "unknown", "banned"):
+                existing = db.get_caller(self._known_caller_name) or (
+                    db.get_caller(self._known_caller_name.title()) if self._known_caller_name.isascii() else None
+                ) or db.get_caller(self._known_caller_name.lower())
+
             # Intro with known profile, or explicit "do you remember?"
             if existing and (wants_recall or name_from_text):
-                self._known_caller_name = existing.get("name") or name_from_text
+                self._known_caller_name = existing.get("name") or name_from_text or self._known_caller_name
                 self._memory_loaded = True
                 self._welcomed_this_session = True
                 facts = existing.get("facts") or {}
@@ -2400,7 +3176,6 @@ def prewarm(proc: JobProcess):
 server.setup_fnc = prewarm
 
 
-import asyncio
 
 
 @server.rtc_session()
@@ -2448,8 +3223,8 @@ async def my_agent(ctx: JobContext):
         allow_interruptions=True,
         min_interruption_duration=0.6,
         min_interruption_words=2,
-        min_endpointing_delay=0.5,
-        max_endpointing_delay=2.5,
+        min_endpointing_delay=1.3,
+        max_endpointing_delay=3.5,
         false_interruption_timeout=1.5,
         resume_false_interruption=True,
         aec_warmup_duration=3.0,
@@ -2514,6 +3289,10 @@ async def my_agent(ctx: JobContext):
                 )
             except Exception as err:
                 logger.warning("Failed to persist session breadcrumb: %s", err)
+        try:
+            agent.get_threat_scorer().generate_incident_report()
+        except Exception as err:
+            logger.warning("Failed to generate incident report: %s", err)
         try:
             # If the call was connected (has started_at), it's success. Cancel before connect = failure.
             db.end_call(ctx.room.name, _detect_call_channel(ctx.room))

@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRemoteParticipants } from '@livekit/components-react';
 import { RemoteAudioTrack, Track } from 'livekit-client';
+import { useRemoteParticipants } from '@livekit/components-react';
 
 /** Keep agent audio at max safe volume (1.0). Never set > 1 — crashes HTMLMediaElement. */
 export function AudioVolumeBooster() {

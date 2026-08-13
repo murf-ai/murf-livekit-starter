@@ -205,6 +205,82 @@ class MetricsHandler(BaseHTTPRequestHandler):
                 self._send(500, b'{"error":"clear_failed"}', "application/json")
             return
 
+        if path == "/api/manager/approve":
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b"{}"
+            try:
+                body = json.loads(raw.decode("utf-8") or "{}")
+                import manager
+
+                req_id = body.get("request_id")
+                notes = body.get("notes")
+                if not req_id:
+                    self._send(400, b'{"error":"request_id_required"}', "application/json")
+                    return
+                res = manager.approve_manager_request(req_id, resolution_notes=notes)
+                self._send(
+                    200,
+                    json.dumps(res).encode("utf-8"),
+                    "application/json; charset=utf-8",
+                )
+            except Exception:
+                logger.exception("manager approve failed")
+                self._send(500, b'{"error":"approve_failed"}', "application/json")
+            return
+
+        if path == "/api/manager/reject":
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b"{}"
+            try:
+                body = json.loads(raw.decode("utf-8") or "{}")
+                import manager
+
+                req_id = body.get("request_id")
+                notes = body.get("notes")
+                if not req_id:
+                    self._send(400, b'{"error":"request_id_required"}', "application/json")
+                    return
+                res = manager.reject_manager_request(req_id, resolution_notes=notes)
+                self._send(
+                    200,
+                    json.dumps(res).encode("utf-8"),
+                    "application/json; charset=utf-8",
+                )
+            except Exception:
+                logger.exception("manager reject failed")
+                self._send(500, b'{"error":"reject_failed"}', "application/json")
+            return
+
+        if path == "/api/threats/ban":
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b"{}"
+            try:
+                body = json.loads(raw.decode("utf-8") or "{}")
+                import threat_engine
+
+                action = body.get("action", "ban")
+                fingerprint = body.get("fingerprint")
+                if not fingerprint:
+                    self._send(400, b'{"error":"fingerprint_required"}', "application/json")
+                    return
+                if action == "unban":
+                    res = threat_engine.unban_session(fingerprint)
+                else:
+                    res = threat_engine.ban_session_manual(
+                        fingerprint,
+                        reason=body.get("reason", "Manual ban via dashboard"),
+                        permanent=bool(body.get("permanent", False)),
+                    )
+                self._send(
+                    200,
+                    json.dumps(res).encode("utf-8"),
+                    "application/json; charset=utf-8",
+                )
+            except Exception:
+                logger.exception("ban management action failed")
+                self._send(500, b'{"error":"ban_action_failed"}', "application/json")
+            return
+
         if path not in {"/api/calls", "/api/metrics"}:
             self._send(404, b'{"error":"not_found"}', "application/json")
             return
@@ -245,6 +321,44 @@ class MetricsHandler(BaseHTTPRequestHandler):
 
         if path in {"/", "/dashboard"}:
             self._send(200, _DASHBOARD_HTML.encode("utf-8"), "text/html; charset=utf-8")
+            return
+        if path in {"/api/manager", "/api/manager/requests"}:
+            try:
+                import manager
+
+                status = (query.get("status") or [None])[0]
+                rtype = (query.get("type") or [None])[0]
+                payload = manager.list_manager_requests(status=status, request_type=rtype)
+                self._send(
+                    200,
+                    json.dumps(payload).encode("utf-8"),
+                    "application/json; charset=utf-8",
+                )
+            except Exception:
+                logger.exception("manager query failed")
+                self._send(
+                    500,
+                    json.dumps({"error": "manager_unavailable"}).encode(),
+                    "application/json",
+                )
+            return
+        if path in {"/api/security", "/api/threats"}:
+            try:
+                import threat_engine
+
+                payload = threat_engine.get_security_dashboard_payload(since=since)
+                self._send(
+                    200,
+                    json.dumps(payload).encode("utf-8"),
+                    "application/json; charset=utf-8",
+                )
+            except Exception:
+                logger.exception("security query failed")
+                self._send(
+                    500,
+                    json.dumps({"error": "security_unavailable"}).encode(),
+                    "application/json",
+                )
             return
         if path == "/api/escalations":
             try:

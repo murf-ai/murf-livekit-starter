@@ -3,11 +3,11 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import {
-  Microphone,
-  SpeakerHigh,
-  CircleNotch,
-  PhoneDisconnect,
   Brain,
+  CircleNotch,
+  Microphone,
+  PhoneDisconnect,
+  SpeakerHigh,
 } from '@phosphor-icons/react';
 import type { AgentUIState } from './particle-swarm-canvas';
 

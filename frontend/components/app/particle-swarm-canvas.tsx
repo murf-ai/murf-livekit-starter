@@ -3,13 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 
-export type AgentUIState =
-  | 'ready'
-  | 'connecting'
-  | 'thinking'
-  | 'listening'
-  | 'speaking'
-  | 'ended';
+export type AgentUIState = 'ready' | 'connecting' | 'thinking' | 'listening' | 'speaking' | 'ended';
 
 interface ParticleSwarmCanvasProps {
   agentState: AgentUIState;

@@ -24,7 +24,7 @@ export function CallEndedView({ onStartAgain, summary }: CallEndedViewProps) {
   const queries = summary?.queries ?? [];
 
   return (
-    <div className="relative z-10 flex max-h-[calc(100vh-5rem)] w-full flex-col items-center overflow-y-auto px-6 py-6 md:py-10 text-center">
+    <div className="relative z-10 flex max-h-[calc(100vh-5rem)] w-full flex-col items-center overflow-y-auto px-6 py-6 text-center md:py-10">
       <SpeakerStatusBadge state="ended" className="mb-10" />
 
       <FinanceAvatarVideo alwaysPlay size="xl" />
@@ -53,9 +53,7 @@ export function CallEndedView({ onStartAgain, summary }: CallEndedViewProps) {
         className="mt-6 w-full max-w-md rounded-2xl border border-white/10 bg-slate-950/55 p-4 text-left backdrop-blur-md"
       >
         <div className="mb-3 flex items-center justify-between gap-3">
-          <p className="text-xs font-medium tracking-wide text-slate-400 uppercase">
-            Call notes
-          </p>
+          <p className="text-xs font-medium tracking-wide text-slate-400 uppercase">Call notes</p>
           <span
             className={
               failed
@@ -71,9 +69,7 @@ export function CallEndedView({ onStartAgain, summary }: CallEndedViewProps) {
             ? 'The caller connected to Jan Sahay.'
             : 'The call was cancelled before connecting.'}
         </p>
-        <p className="mt-3 text-xs font-medium tracking-wide text-slate-400 uppercase">
-          Queries
-        </p>
+        <p className="mt-3 text-xs font-medium tracking-wide text-slate-400 uppercase">Queries</p>
         {queries.length > 0 ? (
           <ul className="mt-2 space-y-1.5">
             {queries.map((query, index) => (
@@ -106,7 +102,7 @@ export function CallEndedView({ onStartAgain, summary }: CallEndedViewProps) {
         <Button
           size="lg"
           onClick={onStartAgain}
-          className="group h-12 min-w-[200px] rounded-full bg-white px-8 text-sm font-semibold text-slate-950 shadow-[0_12px_40px_-12px_rgba(16,185,129,0.5)] transition-all duration-300 hover:bg-emerald-50 active:scale-[0.98] gap-2 flex items-center justify-center"
+          className="group flex h-12 min-w-[200px] items-center justify-center gap-2 rounded-full bg-white px-8 text-sm font-semibold text-slate-950 shadow-[0_12px_40px_-12px_rgba(16,185,129,0.5)] transition-all duration-300 hover:bg-emerald-50 active:scale-[0.98]"
         >
           <PhoneCall className="size-4 text-emerald-600" />
           <span>Call Back</span>

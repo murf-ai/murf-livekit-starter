@@ -1,8 +1,8 @@
 'use client';
 
 import React from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { MicrophoneSlash, Lock, ArrowClockwise, WarningCircle } from '@phosphor-icons/react';
+import { AnimatePresence, motion } from 'motion/react';
+import { ArrowClockwise, Lock, MicrophoneSlash, WarningCircle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 
 interface MicPermissionModalProps {
@@ -16,38 +16,41 @@ export function MicPermissionModal({ isOpen, onRetry, onClose }: MicPermissionMo
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
         <motion.div
           initial={{ opacity: 0, scale: 0.9, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: 20 }}
-          className="relative w-full max-w-md overflow-hidden rounded-3xl border border-rose-500/30 bg-slate-900/95 p-6 shadow-2xl shadow-rose-950/40 text-slate-100"
+          className="relative w-full max-w-md overflow-hidden rounded-3xl border border-rose-500/30 bg-slate-900/95 p-6 text-slate-100 shadow-2xl shadow-rose-950/40"
         >
-          <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400">
+          <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full border border-rose-500/30 bg-rose-500/10 text-rose-400">
             <MicrophoneSlash className="size-8 animate-pulse" />
           </div>
 
-          <h3 className="text-xl font-bold text-center text-white">
-            Microphone Access Blocked
-          </h3>
+          <h3 className="text-center text-xl font-bold text-white">Microphone Access Blocked</h3>
 
           <p className="mt-2 text-center text-sm text-slate-300">
             Jan Sahay needs access to your microphone so you can speak during the call.
           </p>
 
           <div className="my-5 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-xs leading-relaxed text-slate-300">
-            <div className="flex items-center gap-2 font-semibold text-rose-300 mb-2">
+            <div className="mb-2 flex items-center gap-2 font-semibold text-rose-300">
               <WarningCircle className="size-4" /> How to enable your microphone:
             </div>
-            <ol className="list-decimal list-inside space-y-1.5 text-slate-400">
+            <ol className="list-inside list-decimal space-y-1.5 text-slate-400">
               <li>
-                Click the <strong className="text-slate-200">lock icon <Lock className="inline size-3 text-emerald-400" /></strong> or site settings icon in your browser URL bar.
+                Click the{' '}
+                <strong className="text-slate-200">
+                  lock icon <Lock className="inline size-3 text-emerald-400" />
+                </strong>{' '}
+                or site settings icon in your browser URL bar.
               </li>
               <li>
                 Find <strong className="text-slate-200">Microphone</strong> in the permission list.
               </li>
               <li>
-                Switch the permission setting to <strong className="text-emerald-400">Allow</strong>.
+                Switch the permission setting to <strong className="text-emerald-400">Allow</strong>
+                .
               </li>
               <li>
                 Click the <strong className="text-slate-200">Try Again</strong> button below.
@@ -67,9 +70,9 @@ export function MicPermissionModal({ isOpen, onRetry, onClose }: MicPermissionMo
             )}
             <Button
               onClick={onRetry}
-              className={`rounded-full bg-rose-600 text-white hover:bg-rose-500 font-semibold ${onClose ? 'w-1/2' : 'w-full'}`}
+              className={`rounded-full bg-rose-600 font-semibold text-white hover:bg-rose-500 ${onClose ? 'w-1/2' : 'w-full'}`}
             >
-              <ArrowClockwise className="size-4 mr-2" />
+              <ArrowClockwise className="mr-2 size-4" />
               Try Again
             </Button>
           </div>

@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export function useMicPermissions() {
-  const [permissionState, setPermissionState] = useState<'prompt' | 'granted' | 'denied' | 'unknown'>('unknown');
+  const [permissionState, setPermissionState] = useState<
+    'prompt' | 'granted' | 'denied' | 'unknown'
+  >('unknown');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const checkPermission = useCallback(async () => {
@@ -11,7 +13,7 @@ export function useMicPermissions() {
       if (typeof navigator !== 'undefined' && navigator.permissions) {
         const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
         setPermissionState(result.state as 'prompt' | 'granted' | 'denied');
-        
+
         result.onchange = () => {
           setPermissionState(result.state as 'prompt' | 'granted' | 'denied');
         };

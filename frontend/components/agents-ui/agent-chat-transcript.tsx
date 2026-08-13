@@ -84,8 +84,8 @@ export function AgentChatTranscript({
             <Message key={id} title={title} from={messageOrigin}>
               <MessageContent>
                 {messageOrigin === 'assistant' && (
-                  <div className="mb-1 flex items-center gap-2 border-b border-emerald-500/15 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-emerald-400">
-                    <span className="inline-block size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <div className="mb-1 flex items-center gap-2 border-b border-emerald-500/15 pb-1.5 text-[11px] font-medium tracking-wider text-emerald-400 uppercase">
+                    <span className="inline-block size-1.5 animate-pulse rounded-full bg-emerald-400" />
                     Jan Sahay AI
                   </div>
                 )}

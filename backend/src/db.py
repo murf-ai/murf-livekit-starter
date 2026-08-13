@@ -178,6 +178,75 @@ def get_caller(identifier: str, db_path: Path | str | None = None) -> dict | Non
         }
 
 
+def safe_key_exists(safe_key: str, db_path: Path | str | None = None) -> bool:
+    """Check if a Safe Key is already taken by a profile or a pending/approved request."""
+    if not safe_key:
+        return False
+    init_db(db_path)
+    clean_key = safe_key.strip().lower()
+
+    # 1. Check callers table
+    with get_db_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT facts FROM callers WHERE facts IS NOT NULL")
+        rows = cursor.fetchall()
+        for r in rows:
+            try:
+                facts = json.loads(r["facts"])
+                if isinstance(facts, dict) and facts.get("safe_key", "").strip().lower() == clean_key:
+                    return True
+            except Exception:
+                continue
+
+    # 2. Check manager_approvals table
+    with get_db_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT count(name) FROM sqlite_master WHERE type='table' AND name='manager_approvals'")
+        if cursor.fetchone()[0] == 1:
+            cursor.execute("SELECT safe_key FROM manager_approvals WHERE status != 'REJECTED'")
+            rows = cursor.fetchall()
+            for r in rows:
+                if r["safe_key"] and r["safe_key"].strip().lower() == clean_key:
+                    return True
+
+    return False
+
+
+    return None
+
+
+def get_caller_by_safe_key_in_text(text: str, db_path: Path | str | None = None) -> dict | None:
+    """Retrieve a caller's memory record if their Safe Key is found as a substring/word within the input text."""
+    if not text:
+        return None
+    init_db(db_path)
+    clean_text = text.strip().replace(" ", "").lower()
+    with get_db_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id, name, language_preference, facts, consent_given, last_interaction, created_at, updated_at FROM callers WHERE facts IS NOT NULL")
+        rows = cursor.fetchall()
+        for r in rows:
+            try:
+                facts = json.loads(r["facts"])
+                if isinstance(facts, dict) and "safe_key" in facts:
+                    clean_key = str(facts["safe_key"]).strip().replace(" ", "").lower()
+                    # Key must be present in the cleaned text and be at least 1 char
+                    if clean_key and clean_key in clean_text:
+                        return {
+                            "user_id": r["user_id"],
+                            "name": r["name"],
+                            "language_preference": r["language_preference"],
+                            "facts": facts,
+                            "consent_given": bool(r["consent_given"]),
+                            "last_interaction": r["last_interaction"],
+                            "created_at": r["created_at"],
+                            "updated_at": r["updated_at"],
+                        }
+            except Exception:
+                continue
+    return None
+
+
 def save_caller(
     user_id: str,
     name: str | None = None,
@@ -514,8 +583,14 @@ def end_call(
 
         connected = bool(row["connected"])
         user_turns = int(row["user_turns"] or 0)
-        # Success if connected and successfully talked to user query at least once (user_turns >= 1)
-        success = connected and user_turns >= 1
+        # Success if connected and (interacted or completed task or delivered docs)
+        success = connected and (
+            user_turns >= 1
+            or bool(row["eligibility_completed"])
+            or bool(row["document_list_delivered"])
+            or bool(row["escalation_created"])
+            or not bool(row["tool_failure"])
+        )
         outcome = "success" if success else "failed"
         if success:
             failure_type = None

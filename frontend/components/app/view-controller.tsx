@@ -1,23 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTheme } from 'next-themes';
 import { AnimatePresence, motion } from 'motion/react';
-import { useAgent, useSessionContext, useSessionMessages } from '@livekit/components-react';
+import { useAgent, useSessionContext } from '@livekit/components-react';
 import type { AppConfig } from '@/app-config';
 import { AgentSessionView_01 } from '@/components/agents-ui/blocks/agent-session-view-01';
-import { WelcomeView } from '@/components/app/welcome-view';
-import { ConnectingView } from '@/components/app/connecting-view';
 import { CallEndedView, type CallSummary } from '@/components/app/call-ended-view';
-import { ParticleSwarmCanvas, type AgentUIState } from '@/components/app/particle-swarm-canvas';
+import { ConnectingView } from '@/components/app/connecting-view';
 import { MicPermissionModal } from '@/components/app/mic-permission-modal';
+import { type AgentUIState, ParticleSwarmCanvas } from '@/components/app/particle-swarm-canvas';
+import { WelcomeView } from '@/components/app/welcome-view';
 import { useMicPermissions } from '@/hooks/useMicPermissions';
-
-import { DashboardView } from './dashboard-view';
-import { SchemesView } from './schemes-view';
-import { FraudView } from './fraud-view';
 import { ComplaintView } from './complaint-view';
+import { DashboardView } from './dashboard-view';
 import { EscalationsView } from './escalations-view';
+import { FraudView } from './fraud-view';
+import { ManagerView } from './manager-view';
+import { SchemesView } from './schemes-view';
+import { SecurityView } from './security-view';
 
 function sanitizeQuery(text: string): string {
   return text
@@ -50,7 +51,6 @@ interface ViewControllerProps {
 export function ViewController({ appConfig }: ViewControllerProps) {
   const session = useSessionContext();
   const { isConnected, start, end } = session;
-  const { messages } = useSessionMessages(session);
   const { state: agentState } = useAgent();
   const { resolvedTheme } = useTheme();
 
@@ -63,12 +63,7 @@ export function ViewController({ appConfig }: ViewControllerProps) {
 
   const { permissionState, requestMic } = useMicPermissions();
 
-  const snapshotQueries = () =>
-    messages
-      .filter((message) => message.from?.isLocal === true)
-      .map((message) => sanitizeQuery(message.message ?? ''))
-      .filter(Boolean)
-      .slice(-8);
+  const snapshotQueries = () => [];
 
   useEffect(() => {
     if (isConnected) {
@@ -147,7 +142,8 @@ export function ViewController({ appConfig }: ViewControllerProps) {
     }
   };
 
-  const isConnecting = isConnectingManual || agentState === 'connecting' || agentState === 'initializing';
+  const isConnecting =
+    isConnectingManual || agentState === 'connecting' || agentState === 'initializing';
 
   let uiState: AgentUIState = 'ready';
   if (isCallEnded && hasStartedOnce) {
@@ -179,41 +175,50 @@ export function ViewController({ appConfig }: ViewControllerProps) {
   const isHome = activeTab === 'HOME';
 
   return (
-    <div className={`relative min-h-screen w-full flex flex-col font-sans select-none ${
-      isHome ? 'bg-slate-950 text-slate-100 overflow-hidden' : 'bg-[#f8fafc] text-slate-800'
-    }`}>
+    <div
+      className={`relative flex min-h-screen w-full flex-col font-sans select-none ${
+        isHome ? 'overflow-hidden bg-slate-950 text-slate-100' : 'bg-[#f8fafc] text-slate-800'
+      }`}
+    >
       {/* Navigation Header */}
-      <header className="h-16 bg-[#0b4d7e] text-white flex items-center justify-between px-6 shadow-md z-40 shrink-0 select-none">
+      <header className="z-40 flex h-16 shrink-0 items-center justify-between bg-[#0b4d7e] px-6 text-white shadow-md select-none">
         {/* Left: Logo & Branding */}
         <div className="flex items-center gap-3">
-          <img 
-            src="/finance_avatar/finance.jpeg" 
-            alt="Jan Sahay Logo" 
+          <img
+            src="/finance_avatar/finance.jpeg"
+            alt="Jan Sahay Logo"
             className="size-8 rounded-full border border-blue-200/40 object-cover"
           />
-          <span className="font-extrabold text-base md:text-lg tracking-wide">
-            Jan Sahay <span className="text-xs text-blue-200 font-bold hidden sm:inline ml-1.5">| जन सहाय</span>
+          <span className="text-base font-extrabold tracking-wide md:text-lg">
+            Jan Sahay{' '}
+            <span className="ml-1.5 hidden text-xs font-bold text-blue-200 sm:inline">
+              | जन सहाय
+            </span>
           </span>
         </div>
 
         {/* Center: Tabs */}
-        <nav className="hidden lg:flex items-stretch h-full">
-          {([
-            { id: 'HOME', label: 'Home' },
-            { id: 'SCHEMES_SEARCH', label: 'Schemes Search' },
-            { id: 'FRAUD_PREVENTION', label: 'Fraud Prevention' },
-            { id: 'COMPLAINT_HELPLINE', label: 'Complaint Helpline' },
-            { id: 'OPEN_ESCALATIONS', label: 'Open Escalations' },
-            { id: 'CALL_DASHBOARD', label: 'Call Dashboard' }
-          ] as const).map((tab) => {
+        <nav className="hidden h-full items-stretch lg:flex">
+          {(
+            [
+              { id: 'HOME', label: 'Home' },
+              { id: 'SCHEMES_SEARCH', label: 'Schemes Search' },
+              { id: 'FRAUD_PREVENTION', label: 'Fraud Prevention' },
+              { id: 'COMPLAINT_HELPLINE', label: 'Complaint Helpline' },
+              { id: 'OPEN_ESCALATIONS', label: 'Open Escalations' },
+              { id: 'CALL_DASHBOARD', label: 'Call Dashboard' },
+              { id: 'SECURITY_CENTER', label: '🛡️ Security Center' },
+              { id: 'MANAGER_PORTAL', label: '👔 Manager Portal' },
+            ] as const
+          ).map((tab) => {
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 flex items-center text-xs md:text-sm font-bold uppercase tracking-wider transition ${
-                  isActive 
-                    ? 'bg-[#052e4b] border-b-4 border-b-amber-400 text-white' 
+                className={`flex items-center px-3.5 py-2 text-xs font-bold tracking-wider uppercase transition md:text-sm ${
+                  isActive
+                    ? 'border-b-4 border-b-amber-400 bg-[#052e4b] text-white'
                     : 'text-blue-100 hover:bg-white/5 hover:text-white'
                 }`}
               >
@@ -230,7 +235,7 @@ export function ViewController({ appConfig }: ViewControllerProps) {
             <select
               value={activeTab}
               onChange={(e) => setActiveTab(e.target.value)}
-              className="bg-[#052e4b] text-white border border-blue-300/25 rounded-lg px-2.5 py-1.5 text-xs font-bold font-sans uppercase focus:outline-none"
+              className="rounded-lg border border-blue-300/25 bg-[#052e4b] px-2.5 py-1.5 font-sans text-xs font-bold text-white uppercase focus:outline-none"
             >
               <option value="HOME">Home</option>
               <option value="SCHEMES_SEARCH">Schemes Search</option>
@@ -238,15 +243,17 @@ export function ViewController({ appConfig }: ViewControllerProps) {
               <option value="COMPLAINT_HELPLINE">Complaint Helpline</option>
               <option value="OPEN_ESCALATIONS">Open Escalations</option>
               <option value="CALL_DASHBOARD">Call Dashboard</option>
+              <option value="SECURITY_CENTER">🛡️ Security Center</option>
+              <option value="MANAGER_PORTAL">👔 Manager Portal</option>
             </select>
           </div>
 
           {(isConnected || isConnecting) && (
             <button
               onClick={() => setActiveTab('HOME')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-rose-500 hover:bg-rose-600 text-white text-[10px] md:text-xs font-bold shadow-sm animate-pulse transition"
+              className="inline-flex animate-pulse items-center gap-1.5 rounded-full bg-rose-500 px-3 py-1.5 text-[10px] font-bold text-white shadow-sm transition hover:bg-rose-600 md:text-xs"
             >
-              <span className="size-2 rounded-full bg-white block" />
+              <span className="block size-2 rounded-full bg-white" />
               <span>LIVE CALL</span>
             </button>
           )}
@@ -254,13 +261,13 @@ export function ViewController({ appConfig }: ViewControllerProps) {
       </header>
 
       {/* Main Content Area */}
-      <div className="flex-1 relative flex flex-col min-h-0">
+      <div className="relative flex min-h-0 flex-1 flex-col">
         {isHome ? (
           <>
             {/* 3D Three.js Particle Swarm Background Canvas */}
             <ParticleSwarmCanvas agentState={uiState} />
 
-            <div className="flex-1 flex flex-col justify-center items-center relative z-10 w-full">
+            <div className="relative z-10 flex w-full flex-1 flex-col items-center justify-center">
               <AnimatePresence mode="wait">
                 {/* State 1: Ready */}
                 {uiState === 'ready' && (
@@ -282,9 +289,7 @@ export function ViewController({ appConfig }: ViewControllerProps) {
                 )}
 
                 {/* Active call: listening / thinking / speaking */}
-                {(uiState === 'listening' ||
-                  uiState === 'thinking' ||
-                  uiState === 'speaking') && (
+                {(uiState === 'listening' || uiState === 'thinking' || uiState === 'speaking') && (
                   <MotionSessionView
                     key="session-view"
                     {...VIEW_MOTION_PROPS}
@@ -306,7 +311,7 @@ export function ViewController({ appConfig }: ViewControllerProps) {
                     audioVisualizerRadialRadius={appConfig.audioVisualizerRadialRadius}
                     audioVisualizerWaveLineWidth={appConfig.audioVisualizerWaveLineWidth}
                     onDisconnect={handleDisconnect}
-                    className="fixed inset-x-0 bottom-0 top-16"
+                    className="fixed inset-x-0 top-16 bottom-0"
                   />
                 )}
 
@@ -325,9 +330,9 @@ export function ViewController({ appConfig }: ViewControllerProps) {
         ) : (
           <div className="flex-1 overflow-y-auto">
             {activeTab === 'CALL_DASHBOARD' && (
-              <DashboardView 
-                isCallActive={isConnected} 
-                onStartCall={handleStartCall} 
+              <DashboardView
+                isCallActive={isConnected}
+                onStartCall={handleStartCall}
                 onEndCall={handleDisconnect}
                 onSwitchToTab={setActiveTab}
               />
@@ -336,6 +341,8 @@ export function ViewController({ appConfig }: ViewControllerProps) {
             {activeTab === 'FRAUD_PREVENTION' && <FraudView />}
             {activeTab === 'COMPLAINT_HELPLINE' && <ComplaintView />}
             {activeTab === 'OPEN_ESCALATIONS' && <EscalationsView />}
+            {activeTab === 'SECURITY_CENTER' && <SecurityView />}
+            {activeTab === 'MANAGER_PORTAL' && <ManagerView />}
           </div>
         )}
       </div>

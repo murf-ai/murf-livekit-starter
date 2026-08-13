@@ -9,8 +9,8 @@ import {
   useTracks,
   useVoiceAssistant,
 } from '@livekit/components-react';
-import { cn } from '@/lib/shadcn/utils';
 import { FinanceAvatarVideo } from '@/components/app/finance-avatar-video';
+import { cn } from '@/lib/shadcn/utils';
 
 const ANIMATION_TRANSITION: MotionProps['transition'] = {
   type: 'spring',
@@ -62,9 +62,7 @@ export function TileLayout({ chatOpen }: TileLayoutProps) {
     <div
       className={cn(
         'pointer-events-none absolute inset-x-0 z-20 flex justify-center',
-        chatOpen
-          ? 'top-12 h-auto md:top-14'
-          : 'top-8 bottom-32 items-center md:top-12 md:bottom-40'
+        chatOpen ? 'top-12 h-auto md:top-14' : 'top-8 bottom-32 items-center md:top-12 md:bottom-40'
       )}
     >
       <div

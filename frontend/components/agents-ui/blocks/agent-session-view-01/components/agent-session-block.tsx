@@ -196,22 +196,20 @@ export function AgentSessionView_01({
 
   // Latest non-empty agent message for always-on subtitles when chat is collapsed.
   // Skip internal locks / meta chain-of-thought if any leak through.
-  const latestAgentSubtitle = [...messages]
-    .reverse()
-    .find((m) => {
-      if (m.from?.isLocal === true) return false;
-      const t = m.message?.trim() ?? '';
-      if (!t) return false;
-      if (
-        t.startsWith('[[LANG_LOCK]]') ||
-        t.startsWith('[[HIDDEN_LANG_LOCK]]') ||
-        t.startsWith('[[CALLER_MEMORY]]')
-      ) {
-        return false;
-      }
-      if (/we need to respond|as per policy|the user asks/i.test(t)) return false;
-      return true;
-    })?.message;
+  const latestAgentSubtitle = [...messages].reverse().find((m) => {
+    if (m.from?.isLocal === true) return false;
+    const t = m.message?.trim() ?? '';
+    if (!t) return false;
+    if (
+      t.startsWith('[[LANG_LOCK]]') ||
+      t.startsWith('[[HIDDEN_LANG_LOCK]]') ||
+      t.startsWith('[[CALLER_MEMORY]]')
+    ) {
+      return false;
+    }
+    if (/we need to respond|as per policy|the user asks/i.test(t)) return false;
+    return true;
+  })?.message;
 
   useEffect(() => {
     const lastMessage = messages.at(-1);
@@ -224,10 +222,7 @@ export function AgentSessionView_01({
   return (
     <section
       ref={ref}
-      className={cn(
-        'relative z-10 h-full w-full overflow-hidden bg-transparent',
-        className
-      )}
+      className={cn('relative z-10 h-full w-full overflow-hidden bg-transparent', className)}
       {...props}
     >
       <Fade top className="absolute inset-x-4 top-0 z-10 h-40" />
@@ -290,7 +285,7 @@ export function AgentSessionView_01({
               transition={{ duration: 0.2 }}
               className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex justify-center md:inset-x-12"
             >
-              <p className="max-w-2xl rounded-2xl border border-emerald-500/30 bg-slate-950/90 px-5 py-3.5 text-center text-sm font-medium leading-relaxed text-slate-100 shadow-2xl backdrop-blur-xl md:text-base">
+              <p className="max-w-2xl rounded-2xl border border-emerald-500/30 bg-slate-950/90 px-5 py-3.5 text-center text-sm leading-relaxed font-medium text-slate-100 shadow-2xl backdrop-blur-xl md:text-base">
                 {latestAgentSubtitle}
               </p>
             </motion.div>
