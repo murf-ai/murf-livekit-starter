@@ -279,7 +279,9 @@ class OutboundAgent(Agent):
     ) -> str:
         """Return document checklist for the scheme being discussed."""
         name = scheme_name or self.meta.get("scheme") or "pmsby"
-        return json.dumps(schemes.get_document_checklist(name))
+        result = schemes.get_document_checklist(name)
+        db.record_document_list_result(self.ctx.room.name, result)
+        return json.dumps(result)
 
     @function_tool
     async def get_scheme_info(
@@ -365,6 +367,16 @@ async def outbound_agent(ctx: JobContext):
 
     await ctx.connect()
     db.init_db()
+    db.start_call(ctx.room.name, "sip")
+
+    async def cleanup():
+        try:
+            # Connected SIP call = success. Cancel before connect = failure.
+            db.end_call(ctx.room.name, "sip")
+        except Exception as err:
+            logger.warning("Failed to record SIP call outcome: %s", err)
+
+    ctx.add_shutdown_callback(cleanup)
 
     purpose = (meta.get("purpose") or "scheme_deadline_reminder").lower()
     # Persist lightweight outreach breadcrumb (no phone secrets beyond name/scheme).
@@ -476,9 +488,11 @@ async def outbound_agent(ctx: JobContext):
             e.metadata.get("sip_status") if e.metadata else None,
         )
         session_started.cancel()
+        db.record_tool_error(ctx.room.name)
         ctx.shutdown()
         return
 
+    db.mark_call_connected(ctx.room.name)
     await session_started
     greeting = build_greeting(meta)
     logger.info("playing opening greeting (%d chars)", len(greeting))

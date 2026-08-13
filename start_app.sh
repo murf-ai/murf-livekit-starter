@@ -9,6 +9,7 @@ else
   echo "Warning: livekit-server not found. Skipping local LiveKit startup and using your configured LIVEKIT_URL instead."
 fi
 
+(cd backend && uv run python src/metrics.py) &
 (cd backend && uv run python src/agent.py dev) &
 (cd frontend && pnpm dev) &
 

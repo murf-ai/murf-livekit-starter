@@ -72,15 +72,16 @@ _FRAUD_KEYWORDS = re.compile(
     r"\b("
     r"fraud|fraudulent|scam|phishing|unauthorized|unauthorised|"
     r"hacked|account\s+hack|my\s+account\s+was\s+hack|"
-    r"stolen\s+(card|phone|device|money|account)|"
-    r"lost\s+(my\s+)?(credit\s+)?card|card\s+(lost|stolen|missing)|"
+    r"stolen\s+(card|phone|device|money|account|debit|credit)|"
+    r"lost\s+(my\s+)?((?:credit|debit|atm)\s+)?card|card\s+(lost|stolen|missing)|"
+    r"debit\s+card\s+theft|debit\s+card\s+fraud|credit\s+card\s+theft|credit\s+card\s+fraud|"
     r"compromise|compromised|identity\s*theft|"
     r"someone\s+(else\s+)?(accessed|logged|used)|"
     r"not\s+me|didn't\s+(do|make|authori[sz]e)|did\s+not\s+(do|make|authori[sz]e)|"
     r"suspicious\s+(transaction|activity|login|debit)|"
     r"account\s+(taken|hacked|compromised)|"
     r"otp\s+(leak|stolen|shared|misuse)|"
-    r"dhokha|dhokhe|dhokhadhadi|jalsaji|chori|"
+    r"dhokha|dhokhe|dhokhadhadi|jalsaji|chori|theft|"
     r"card\s+kho\s*gaya|card\s+chori|fraud\s+hua|galat\s+transaction|bina\s+ijazat"
     r")\b",
     re.IGNORECASE,
@@ -95,6 +96,7 @@ _COMPLEX_KEYWORDS = re.compile(
     r"complex|beyond\s+(your|agent)\s+(authority|scope)|"
     r"loan\s+waiver|write[\s-]?off|settlement|"
     r"application\s+status|track\s+(my\s+)?(claim|application|kyc)|"
+    r"autopay|auto-pay|mandate|"
     r"vivad|shikayat|complaint|human\s+se\s+baat|agent\s+se\s+baat|"
     r"limit\s+badhao|refund\s+nahi|claim\s+reject"
     r")\b",

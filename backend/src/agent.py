@@ -2,8 +2,10 @@ import json
 import logging
 import os
 import re
+import time
 
 from dotenv import load_dotenv
+from livekit import rtc
 from livekit.agents import (
     Agent,
     AgentServer,
@@ -26,6 +28,7 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 import db
 import escalation
+import metrics
 import schemes
 from prompt import SYSTEM_PROMPT
 
@@ -68,6 +71,15 @@ _ALLOWED_SHORT_GREETS = {
     "thik",
     "accha",
     "achha",
+    "yep",
+    "yup",
+    "sure",
+    "haan",
+    "na",
+    "naah",
+    "nahi",
+    "nahin",
+    "save",
 }
 
 # Strong romanized Hindi / Hinglish markers (avoid English-only words).
@@ -805,13 +817,13 @@ def _welcome_back_line(caller: dict, lang: str = "en") -> str:
         line += " Aaj main aapki kya madad karoon?"
         return line
 
-    line = f"Welcome back {name}! "
+    line = f"Hello {name}! "
     if last_topic and last_topic not in {
         "government schemes",
         "government scheme",
         "schemes",
     }:
-        line += f"Last time we talked about {last_topic}. "
+        line += f"We discussed about {last_topic}. "
     if open_ticket:
         line += f"Your open case reference {ref} is still with our specialist team. "
     line += "How can I help you today?"
@@ -822,15 +834,20 @@ def _format_memory_note(caller: dict) -> str:
     """System note for a returning caller on a NEW call session."""
     name = caller.get("name") or caller.get("user_id") or "caller"
     facts = caller.get("facts") or {}
-    last_topic = facts.get("last_topic") or "government schemes"
+    last_topic = facts.get("last_topic") or ""
     ref = facts.get("last_escalation_ref") or ""
-    return (
-        f"{_MEMORY_PREFIX} RETURNING_CALLER (new call only): name={name}; "
-        f"last_topic={last_topic}; last_escalation_ref={ref or 'none'}. "
-        f"You MUST mention the last topic"
-        + (f" and reference {ref}" if ref else "")
-        + ". Do NOT say you just saved anything."
-    )
+    
+    msg = f"{_MEMORY_PREFIX} RETURNING_CALLER (new call only): name={name}; "
+    if last_topic:
+        msg += f"last_topic={last_topic}; You MUST welcome them back and mention that last time you talked about {last_topic}. "
+    else:
+        msg += "No last topic found; Greet them simply: 'Welcome back [Name]! How can I help you today?'. "
+        
+    if ref:
+        msg += f"last_escalation_ref={ref}; You MUST mention their open case reference {ref} is under review. "
+        
+    msg += "Do NOT say you just saved anything."
+    return msg
 
 
 def _wants_recall(text: str) -> bool:
@@ -838,7 +855,7 @@ def _wants_recall(text: str) -> bool:
     t = (text or "").lower()
     keys = (
         "do you remember",
-        "you remember me",
+        "you remember",
         "remember me",
         "yaad hai",
         "yaad ho",
@@ -848,6 +865,8 @@ def _wants_recall(text: str) -> bool:
         "last time",
         "pichhli baar",
         "previous conversation",
+        "do you recall",
+        "you recall",
     )
     return any(k in t for k in keys)
 
@@ -908,10 +927,15 @@ def _wants_save(text: str) -> bool:
     if "remember" in t:
         recall = (
             "do you remember",
-            "you remember me",
-            "can you remember me",
-            "remember me?",
-            "remember me.",
+            "you remember",
+            "can you remember",
+            "remember me",
+            "remember our",
+            "remember my",
+            "remember past",
+            "remember previous",
+            "remember the conversation",
+            "remember our conversation",
         )
         # "remember this", "remember my conversation" → save; recall phrases → not save
         return not any(r in t for r in recall)
@@ -1177,6 +1201,8 @@ class Assistant(Agent):
         self._pending_escalation: dict | None = None
         self._last_escalation_ref: str | None = None
         self._awaiting_name_or_ref_for_recall = False
+        self._call_room_id: str | None = None
+        self._last_user_final_at: float | None = None
 
     @function_tool
     async def lookup_caller(self, ctx: RunContext, name_or_id: str) -> str:
@@ -1357,6 +1383,8 @@ class Assistant(Agent):
                 monthly_income_inr=monthly_income_inr,
                 already_has_scheme=already_has_scheme,
             )
+            if self._call_room_id:
+                db.record_eligibility_result(self._call_room_id, result)
             # Persist a light non-sensitive breadcrumb if we know the caller.
             if self._known_caller_name and result.get("ok"):
                 try:
@@ -1377,6 +1405,8 @@ class Assistant(Agent):
             return json.dumps(result)
         except Exception as err:
             logger.exception("check_scheme_eligibility failed: %s", err)
+            if self._call_room_id:
+                db.record_tool_error(self._call_room_id)
             return json.dumps(
                 {
                     "ok": False,
@@ -1419,9 +1449,13 @@ class Assistant(Agent):
         """
         try:
             result = schemes.get_document_checklist(scheme_name)
+            if self._call_room_id:
+                db.record_document_list_result(self._call_room_id, result)
             return json.dumps(result)
         except Exception as err:
             logger.exception("get_document_checklist failed: %s", err)
+            if self._call_room_id:
+                db.record_tool_error(self._call_room_id)
             return json.dumps(
                 {
                     "ok": False,
@@ -1554,6 +1588,8 @@ class Assistant(Agent):
         self._awaiting_escalation_consent = False
         self._pending_escalation = None
         if result.get("ok") and result.get("reference_id"):
+            if self._call_room_id:
+                db.record_escalation(self._call_room_id)
             self._last_escalation_ref = result["reference_id"]
             topic = (
                 "fraud / unauthorized access"
@@ -1616,15 +1652,8 @@ class Assistant(Agent):
         real_topic = self._last_user_topic or ""
         if real_topic and real_topic not in {
             "government schemes",
-            "opening a bank account",
-            "Fixed Deposits",
-            "PMJDY scheme",
-            "PMSBY insurance",
-            "PMJJBY life insurance",
-            "Atal Pension Yojana",
-            "UPI and digital payments",
-            "loans",
-            "insurance",
+            "government scheme",
+            "schemes",
         }:
             facts["last_topic"] = real_topic
         if self._last_escalation_ref:
@@ -1642,6 +1671,26 @@ class Assistant(Agent):
             )
             self._known_caller_name = clean
             self._memory_loaded = True
+            
+            # Link any in-session escalation ticket to the caller's real identity
+            if self._last_escalation_ref:
+                try:
+                    from datetime import datetime, timezone
+                    with db.get_db_connection() as conn:
+                        conn.execute(
+                            """
+                            UPDATE escalations SET
+                                user_id = ?,
+                                requester_name = ?,
+                                updated_at = ?
+                            WHERE reference_id = ?
+                            """,
+                            (user_id, clean, datetime.now(timezone.utc).isoformat(), self._last_escalation_ref)
+                        )
+                        conn.commit()
+                    logger.info("Updated escalation ticket %s with requester name: %s", self._last_escalation_ref, clean)
+                except Exception as escalation_err:
+                    logger.warning("Could not link escalation ticket to requester name: %s", escalation_err)
         except Exception as err:
             logger.warning("Could not persist caller breadcrumb for %s: %s", clean, err)
 
@@ -1784,10 +1833,20 @@ class Assistant(Agent):
         if not text_clean or text_clean in noise:
             logger.info("Ignoring noise/echo transcript: %r", text)
             raise StopResponse()
+        is_awaiting_input = (
+            self._awaiting_name_for_save
+            or self._awaiting_name_or_ref_for_recall
+            or self._awaiting_escalation_consent
+        )
+        has_extracted_data = (
+            bool(_extract_bare_name(text))
+            or bool(extract_ticket_ref(text_clean))
+        )
         if (
             not is_short_greet
-            and not self._awaiting_name_for_save
+            and not is_awaiting_input
             and not _wants_save(text_norm)
+            and not has_extracted_data
             and (len(words) < 2 or len(text_clean) < 6)
         ):
             logger.info("Ignoring ultra-short non-greet transcript: %r", text)
@@ -1797,6 +1856,13 @@ class Assistant(Agent):
         reply_lang = await self.apply_language(
             text, self._last_stt_language, turn_ctx=turn_ctx
         )
+
+        # Auto-extract and set caller name if not already known
+        if not self._known_caller_name or self._known_caller_name.lower() == "caller":
+            introduced_name = extract_caller_name(text) or _extract_bare_name(text)
+            if introduced_name and introduced_name.lower() not in {"caller", "unknown"}:
+                self._known_caller_name = introduced_name
+                logger.info("Auto-extracted and set caller name: %s", introduced_name)
 
         # ── ESCALATION CONSENT INTERCEPT (Day 7) ───────────────────
         # (Runs before recall so fraud/dispute utterances still escalate.)
@@ -2233,10 +2299,12 @@ class Assistant(Agent):
             self._last_user_topic = "PMJJBY life insurance"
         elif "apy" in text_lower or "pension" in text_lower:
             self._last_user_topic = "Atal Pension Yojana"
-        elif "upi" in text_lower or "digital payment" in text_lower:
-            self._last_user_topic = "UPI and digital payments"
-        elif "fraud" in text_lower or "unauthorized" in text_lower:
+        elif any(w in text_lower for w in ["upi", "gpay", "google pay", "phonepe", "paytm", "g pay", "digital payment"]):
+            self._last_user_topic = "Gpay and digital payments"
+        elif any(w in text_lower for w in ["fraud", "unauthorized", "stole", "stolen", "scam", "scammed", "hack", "hacked", "suspicious"]):
             self._last_user_topic = "fraud / unauthorized access"
+        elif any(w in text_lower for w in ["escalat", "case", "ticket", "nodal", "specialist", "dispute", "chargeback"]):
+            self._last_user_topic = "human escalation case"
         elif "lost" in text_lower and "card" in text_lower:
             self._last_user_topic = "lost card / account security"
         elif "loan" in text_lower or "emi" in text_lower:
@@ -2306,6 +2374,17 @@ class Assistant(Agent):
 # Keep one warm process so the next call after END CALL joins quickly.
 # HTTP health port for the worker (not the voice UI). Frontend is on :3000.
 server = AgentServer(num_idle_processes=1, port=8081)
+metrics.start_metrics_server_thread()
+
+
+def _detect_call_channel(room) -> str:
+    try:
+        for participant in room.remote_participants.values():
+            if getattr(participant, "kind", None) == rtc.ParticipantKind.PARTICIPANT_KIND_SIP:
+                return "sip"
+    except Exception:
+        logger.debug("Could not inspect participants for channel", exc_info=True)
+    return "browser"
 
 
 def prewarm(proc: JobProcess):
@@ -2319,6 +2398,9 @@ def prewarm(proc: JobProcess):
 
 
 server.setup_fnc = prewarm
+
+
+import asyncio
 
 
 @server.rtc_session()
@@ -2375,6 +2457,7 @@ async def my_agent(ctx: JobContext):
     )
 
     agent = Assistant()
+    agent._call_room_id = ctx.room.name
 
     @session.on("user_input_transcribed")
     def on_user_input_transcribed(ev: UserInputTranscribedEvent):
@@ -2382,16 +2465,32 @@ async def my_agent(ctx: JobContext):
             return
         language = str(ev.language) if ev.language else None
         agent.note_stt_language(language, ev.transcript)
+        agent._last_user_final_at = time.monotonic()
+        db.note_user_turn(ctx.room.name)
         logger.info(
             "STT final transcript lang=%s text=%r",
             language,
             (ev.transcript or "")[:120],
         )
 
+
+
+
+    @session.on("agent_state_changed")
+    def on_agent_state_changed(ev) -> None:
+        new_state = getattr(ev, "new_state", None) or getattr(ev, "state", None)
+        state_name = str(getattr(new_state, "value", new_state) or "").lower()
+        if "speak" not in state_name or agent._last_user_final_at is None:
+            return
+        latency_ms = int((time.monotonic() - agent._last_user_final_at) * 1000)
+        db.note_reply_latency_ms(ctx.room.name, latency_ms)
+        agent._last_user_final_at = None
+
     # CRITICAL: connect to room FIRST, then start session
     await ctx.connect()
     db.init_db()
     escalation.init_escalation_db()
+    db.start_call(ctx.room.name, _detect_call_channel(ctx.room))
     logger.info("Room connected, starting agent session for %s", ctx.room.name)
 
     await session.start(
@@ -2402,6 +2501,7 @@ async def my_agent(ctx: JobContext):
             text_output=True,
         ),
     )
+    db.mark_call_connected(ctx.room.name)
 
     async def cleanup():
         # Always persist last_topic + open ticket so the NEXT call can recall them.
@@ -2414,6 +2514,11 @@ async def my_agent(ctx: JobContext):
                 )
             except Exception as err:
                 logger.warning("Failed to persist session breadcrumb: %s", err)
+        try:
+            # If the call was connected (has started_at), it's success. Cancel before connect = failure.
+            db.end_call(ctx.room.name, _detect_call_channel(ctx.room))
+        except Exception as err:
+            logger.warning("Failed to record call outcome: %s", err)
         logger.info("Session finished cleanly for room: %s", ctx.room.name)
 
     ctx.add_shutdown_callback(cleanup)
