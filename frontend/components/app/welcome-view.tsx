@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
   AlertTriangle,
   ArrowRight,
@@ -40,6 +41,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     navFraud: 'Fraud Prevention',
     navComplaint: 'Complaint Helpline',
     navEscalations: 'Open Escalations',
+    navMetrics: 'Call Metrics',
     heroTitle: 'Discover Welfare Schemes & Prevent Scams via Sita AI Voice Assistant',
     heroDesc:
       'Start a real-time voice call with Sita AI (ಸೀತಾ) in Kannada, English, and Hindi. Ask queries on scheme eligibility, documents, or report digital fraud seamlessly.',
@@ -117,6 +119,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     navFraud: 'ವಂಚನೆ ತಡೆಗಟ್ಟುವಿಕೆ',
     navComplaint: 'ಸಹಾಯವಾಣಿ',
     navEscalations: 'ತೆರೆದ ದೂರುಗಳು',
+    navMetrics: 'ಧ್ವನಿ ಮಾಪನಗಳು',
     heroTitle:
       'ಧ್ವನಿ AI ಸಹಾಯಕಿ ಸೀತಾ ಮೂಲಕ ಸರ್ಕಾರಿ ಯೋಜನೆಗಳನ್ನು ಅನ್ವೇಷಿಸಿ ಮತ್ತು ಡಿಜಿಟಲ್ ವಂಚನೆ ತಡೆಯಿರಿ',
     heroDesc:
@@ -195,6 +198,7 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     navFraud: 'धोखाधड़ी से सुरक्षा',
     navComplaint: 'शिकायत हेल्पलाइन',
     navEscalations: 'सपोर्ट एस्केलेशन',
+    navMetrics: 'वॉइस मैट्रिक्स',
     heroTitle:
       'सीता AI वॉइस असिस्टेंट के माध्यम से सरकारी योजनाओं की खोज करें और डिजिटल घोटालों से बचें',
     heroDesc:
@@ -546,7 +550,9 @@ export const WelcomeView = ({
   const [selectedLanguage, setSelectedLanguage] = useState('English');
 
   // Call stats states
-  const [stats, setStats] = useState<{ total: number; successful: number; failed: number } | null>(null);
+  const [stats, setStats] = useState<{ total: number; successful: number; failed: number } | null>(
+    null
+  );
   const [loadingStats, setLoadingStats] = useState(false);
 
   const fetchStats = async () => {
@@ -602,11 +608,14 @@ export const WelcomeView = ({
     if (typeof window === 'undefined') return;
     if (document.getElementById('google-translate-script')) return;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).googleTranslateElementInit = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       new (window as any).google.translate.TranslateElement(
         {
           pageLanguage: 'en',
           includedLanguages: 'en,kn,hi,te,ta,mr,bn,gu,ml,pa,ur',
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           layout: (window as any).google.translate.TranslateElement.InlineLayout.SIMPLE,
           autoDisplay: false,
         },
@@ -915,6 +924,12 @@ export const WelcomeView = ({
           >
             {t.navEscalations}
           </button>
+          <Link
+            href="/analytics"
+            className="shrink-0 border-b-4 border-transparent px-5 py-4 text-xs font-bold tracking-wider text-slate-400 uppercase transition-all hover:bg-slate-800/60 hover:text-white"
+          >
+            {t.navMetrics}
+          </Link>
         </div>
       </nav>
 
@@ -975,18 +990,16 @@ export const WelcomeView = ({
             </section>
 
             {/* Call Performance Dashboard */}
-            <section className="relative rounded-2xl border border-slate-800 bg-slate-900/40 p-6 shadow-xl backdrop-blur-md text-left">
+            <section className="relative rounded-2xl border border-slate-800 bg-slate-900/40 p-6 text-left shadow-xl backdrop-blur-md">
               <div className="mb-6 flex items-center justify-between border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">📊</span>
-                  <h3 className="text-lg font-bold text-slate-100">
-                    Sita AI — Live Call Metrics
-                  </h3>
+                  <h3 className="text-lg font-bold text-slate-100">Sita AI — Live Call Metrics</h3>
                 </div>
                 <button
                   onClick={fetchStats}
                   disabled={loadingStats}
-                  className={`flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-350 transition-all hover:bg-slate-800 hover:text-white ${loadingStats ? 'opacity-50' : ''}`}
+                  className={`text-slate-350 flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-bold transition-all hover:bg-slate-800 hover:text-white ${loadingStats ? 'opacity-50' : ''}`}
                 >
                   <span className={`inline-block ${loadingStats ? 'animate-spin' : ''}`}>🔄</span>
                   {loadingStats ? 'Syncing...' : 'Refresh Stats'}
@@ -1002,13 +1015,13 @@ export const WelcomeView = ({
                       📞
                     </div>
                     <div>
-                      <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                      <p className="text-[10px] font-extrabold tracking-wider text-slate-400 uppercase">
                         Total Calls Logged
                       </p>
                       {loadingStats ? (
-                        <div className="h-7 w-12 animate-pulse rounded bg-slate-800 mt-1" />
+                        <div className="mt-1 h-7 w-12 animate-pulse rounded bg-slate-800" />
                       ) : (
-                        <h4 className="text-2xl font-extrabold text-amber-400 mt-0.5">
+                        <h4 className="mt-0.5 text-2xl font-extrabold text-amber-400">
                           {stats?.total ?? 0}
                         </h4>
                       )}
@@ -1024,13 +1037,13 @@ export const WelcomeView = ({
                       ✅
                     </div>
                     <div>
-                      <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                      <p className="text-[10px] font-extrabold tracking-wider text-slate-400 uppercase">
                         Successful Calls
                       </p>
                       {loadingStats ? (
-                        <div className="h-7 w-12 animate-pulse rounded bg-slate-800 mt-1" />
+                        <div className="mt-1 h-7 w-12 animate-pulse rounded bg-slate-800" />
                       ) : (
-                        <h4 className="text-2xl font-extrabold text-emerald-400 mt-0.5">
+                        <h4 className="mt-0.5 text-2xl font-extrabold text-emerald-400">
                           {stats?.successful ?? 0}
                         </h4>
                       )}
@@ -1046,13 +1059,13 @@ export const WelcomeView = ({
                       ⚠️
                     </div>
                     <div>
-                      <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                      <p className="text-[10px] font-extrabold tracking-wider text-slate-400 uppercase">
                         Failed Calls
                       </p>
                       {loadingStats ? (
-                        <div className="h-7 w-12 animate-pulse rounded bg-slate-800 mt-1" />
+                        <div className="mt-1 h-7 w-12 animate-pulse rounded bg-slate-800" />
                       ) : (
-                        <h4 className="text-2xl font-extrabold text-rose-400 mt-0.5">
+                        <h4 className="mt-0.5 text-2xl font-extrabold text-rose-400">
                           {stats?.failed ?? 0}
                         </h4>
                       )}

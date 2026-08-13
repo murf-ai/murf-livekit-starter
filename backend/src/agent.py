@@ -35,6 +35,9 @@ class Assistant(Agent):
     def __init__(self, user_id: str, instructions: str = SYSTEM_PROMPT) -> None:
         super().__init__(instructions=instructions)
         self.user_id = user_id
+        self.outcome_type = "none"
+        self.language = "English"
+        self.failure_type = "none"
 
     @function_tool
     async def lookup_caller(self) -> str:
@@ -75,6 +78,9 @@ class Assistant(Agent):
             contact_details: Phone number or email to reach them.
             checked_facts: Key-value facts/context the agent already checked.
         """
+        self.outcome_type = "escalation"
+        if language:
+            self.language = language
         if checked_facts is None:
             checked_facts = {}
         logger.info(
@@ -105,6 +111,9 @@ class Assistant(Agent):
             language_preference: The caller's preferred language (e.g., Hindi, English, Hinglish).
             facts: A dictionary of key-value pairs representing facts about the caller (e.g., eligibility, schemes checked). Do not store account or ID numbers.
         """
+        self.outcome_type = "saved_facts"
+        if language_preference:
+            self.language = language_preference
         logger.info(
             f"Tool save_caller_facts called for user_id: {self.user_id}, name: {name}"
         )
@@ -149,11 +158,13 @@ class Assistant(Agent):
             attempts = getattr(self, "_eligibility_attempts", 0) + 1
             self._eligibility_attempts = attempts
             if attempts == 1:
+                self.failure_type = "tool_failure"
                 raise Exception("API Connection Timeout (Simulated Transient Error)")
 
             logger.info(
                 f"Tool check_scheme_eligibility called (Attempt {attempts}) for scheme: {scheme_name}, user_id: {self.user_id}"
             )
+            self.outcome_type = "eligibility_check"
             name_upper = scheme_name.upper().strip()
             supported_schemes = ["PMJDY", "PMSBY", "PMJJBY", "APY", "SSY"]
 
@@ -451,10 +462,11 @@ async def my_agent(ctx: JobContext):
         )
 
     # Log the start of the call
+    channel = "SIP" if is_sip else "Browser"
     call_id = None
     try:
-        call_id = db.start_call(ctx.room.name, user_id)
-        logger.info(f"Logged start of call ID: {call_id} in room: {ctx.room.name}")
+        call_id = db.start_call(ctx.room.name, user_id, channel)
+        logger.info(f"Logged start of call ID: {call_id} (Channel: {channel})")
     except Exception as e:
         logger.error(f"Failed to start call log: {e}")
 
@@ -476,9 +488,35 @@ async def my_agent(ctx: JobContext):
             preemptive_generation=False,
         )
 
+        agent_inst = Assistant(user_id=user_id, instructions=instructions)
+
+        # Track turn latency dynamically
+        import time
+
+        user_speech_ended = 0
+        latencies = []
+        user_spoke = False
+
+        @session.on("user_input_transcribed")
+        def on_user_input(event):
+            nonlocal user_speech_ended, user_spoke
+            if event.is_final and event.transcript.strip():
+                user_spoke = True
+                user_speech_ended = time.time()
+                logger.info(f"User finished speaking turn at {user_speech_ended}")
+
+        @session.on("speech_created")
+        def on_speech(event):
+            nonlocal user_speech_ended, latencies
+            if user_speech_ended > 0:
+                latency = time.time() - user_speech_ended
+                latencies.append(latency)
+                logger.info(f"Agent speech created. Turn Latency: {latency:.2f}s")
+                user_speech_ended = 0  # reset
+
         # Start the session, which initializes the voice pipeline and warms up the models
         await session.start(
-            agent=Assistant(user_id=user_id, instructions=instructions),
+            agent=agent_inst,
             room=ctx.room,
             room_options=room_io.RoomOptions(
                 audio_input=room_io.AudioInputOptions(
@@ -498,8 +536,36 @@ async def my_agent(ctx: JobContext):
         # Register successful shutdown callback
         async def on_shutdown():
             try:
-                db.complete_call(call_id, "success")
-                logger.info(f"Logged clean completion of call ID: {call_id}")
+                avg_l = sum(latencies) / len(latencies) if latencies else 0.0
+                out_type = getattr(agent_inst, "outcome_type", "none")
+                lang = getattr(agent_inst, "language", "English")
+                fail_type = getattr(agent_inst, "failure_type", "none")
+                status = "success"
+
+                if fail_type != "none":
+                    status = "failed"
+                elif not user_spoke:
+                    status = "failed"
+                    fail_type = "user_declined" if is_sip else "no_response"
+                elif out_type == "none":
+                    if is_sip:
+                        status = "failed"
+                        fail_type = "user_declined"
+                    else:
+                        status = "success"
+                        fail_type = "incomplete_task"
+
+                db.complete_call(
+                    call_id=call_id,
+                    status=status,
+                    avg_latency=avg_l,
+                    language=lang,
+                    failure_type=fail_type,
+                    outcome_type=out_type,
+                )
+                logger.info(
+                    f"Logged completion of call ID: {call_id} (Status: {status}, Failure: {fail_type}, Outcome: {out_type})"
+                )
             except Exception as e:
                 logger.error(f"Failed to log call completion: {e}")
 
@@ -517,8 +583,22 @@ async def my_agent(ctx: JobContext):
         logger.error(f"Error in my_agent session: {e}")
         if call_id:
             try:
-                db.complete_call(call_id, "failed", str(e))
-                logger.info(f"Logged failed status for call ID: {call_id}")
+                err_str = str(e).lower()
+                fail_type = "api_error"
+                if "db" in err_str or "database" in err_str or "sqlite" in err_str:
+                    fail_type = "tool_failure"
+                db.complete_call(
+                    call_id=call_id,
+                    status="failed",
+                    error_message=str(e),
+                    avg_latency=0.0,
+                    language="English",
+                    failure_type=fail_type,
+                    outcome_type="none",
+                )
+                logger.info(
+                    f"Logged failed status for call ID: {call_id} (Failure: {fail_type})"
+                )
             except Exception as db_err:
                 logger.error(f"Failed to log call failure: {db_err}")
         raise e

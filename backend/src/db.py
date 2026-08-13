@@ -7,6 +7,7 @@ import sqlite3
 import sys
 import urllib.request
 from datetime import datetime
+from typing import Optional
 
 DB_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -52,9 +53,26 @@ def init_db():
             status TEXT DEFAULT 'started',
             created_at TEXT,
             ended_at TEXT,
-            error_message TEXT
+            error_message TEXT,
+            duration INTEGER DEFAULT 0,
+            avg_latency REAL DEFAULT 0.0,
+            channel TEXT DEFAULT 'Browser',
+            language TEXT DEFAULT 'English',
+            failure_type TEXT DEFAULT 'none',
+            outcome_type TEXT DEFAULT 'none'
         )
     """)
+    alterations = [
+        "ALTER TABLE calls ADD COLUMN duration INTEGER DEFAULT 0",
+        "ALTER TABLE calls ADD COLUMN avg_latency REAL DEFAULT 0.0",
+        "ALTER TABLE calls ADD COLUMN channel TEXT DEFAULT 'Browser'",
+        "ALTER TABLE calls ADD COLUMN language TEXT DEFAULT 'English'",
+        "ALTER TABLE calls ADD COLUMN failure_type TEXT DEFAULT 'none'",
+        "ALTER TABLE calls ADD COLUMN outcome_type TEXT DEFAULT 'none'",
+    ]
+    for alt in alterations:
+        with contextlib.suppress(sqlite3.OperationalError):
+            cursor.execute(alt)
     conn.commit()
     conn.close()
 
@@ -317,17 +335,19 @@ def create_escalation(
     return reference_id
 
 
-def start_call(room_name: str, participant_identity: str) -> int:
+def start_call(
+    room_name: str, participant_identity: str, channel: str = "Browser"
+) -> int:
     """Logs the start of a call and returns the call log ID."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     created_at = datetime.now().isoformat()
     cursor.execute(
         """
-        INSERT INTO calls (room_name, participant_identity, status, created_at)
-        VALUES (?, ?, 'started', ?)
+        INSERT INTO calls (room_name, participant_identity, status, created_at, channel)
+        VALUES (?, ?, 'started', ?, ?)
     """,
-        (room_name, participant_identity, created_at),
+        (room_name, participant_identity, created_at, channel),
     )
     call_id = cursor.lastrowid
     conn.commit()
@@ -335,27 +355,59 @@ def start_call(room_name: str, participant_identity: str) -> int:
     return call_id
 
 
-def complete_call(call_id: int, status: str, error_message: str = None):
-    """Updates the status and ended time of a call log."""
+def complete_call(
+    call_id: int,
+    status: str,
+    error_message: Optional[str] = None,
+    avg_latency: float = 0.0,
+    language: str = "English",
+    failure_type: str = "none",
+    outcome_type: str = "none",
+):
+    """Updates the status, ended time, duration, and metrics of a call log."""
     if not call_id:
         return
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     ended_at = datetime.now().isoformat()
+    duration = 0
+    try:
+        cursor.execute("SELECT created_at FROM calls WHERE id = ?", (call_id,))
+        row = cursor.fetchone()
+        if row and row[0]:
+            from datetime import datetime as dt
+
+            start_dt = dt.fromisoformat(row[0])
+            end_dt = dt.fromisoformat(ended_at)
+            duration = int((end_dt - start_dt).total_seconds())
+    except Exception as e:
+        print(f"Error calculating call duration: {e}")
+
     cursor.execute(
         """
         UPDATE calls
-        SET status = ?, ended_at = ?, error_message = ?
+        SET status = ?, ended_at = ?, error_message = ?, duration = ?,
+            avg_latency = ?, language = ?, failure_type = ?, outcome_type = ?
         WHERE id = ?
     """,
-        (status, ended_at, error_message, call_id),
+        (
+            status,
+            ended_at,
+            error_message,
+            duration,
+            avg_latency,
+            language,
+            failure_type,
+            outcome_type,
+            call_id,
+        ),
     )
     conn.commit()
     conn.close()
 
 
 def get_call_stats() -> dict:
-    """Returns the statistics of calls: total, successful, failed."""
+    """Returns advanced call statistics."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     try:
@@ -367,13 +419,48 @@ def get_call_stats() -> dict:
 
         cursor.execute("SELECT COUNT(*) FROM calls WHERE status = 'failed'")
         failed = cursor.fetchone()[0]
+
+        # Calculate average response latency
+        cursor.execute(
+            "SELECT AVG(avg_latency) FROM calls WHERE status = 'success' AND avg_latency > 0"
+        )
+        avg_latency = cursor.fetchone()[0] or 0.0
+
+        # Success rate
+        success_rate = (successful / total * 100) if total > 0 else 0.0
+
+        # Failures group counts
+        failures_group = {}
+        cursor.execute(
+            "SELECT failure_type, COUNT(*) FROM calls WHERE status = 'failed' GROUP BY failure_type"
+        )
+        for r in cursor.fetchall():
+            failures_group[r[0]] = r[1]
+
+        # Outcomes group counts
+        outcomes_group = {
+            "eligibility_check": 0,
+            "escalation": 0,
+            "saved_facts": 0,
+            "none": 0,
+        }
+        cursor.execute("SELECT outcome_type, COUNT(*) FROM calls GROUP BY outcome_type")
+        for r in cursor.fetchall():
+            outcomes_group[r[0]] = r[1]
+
     except sqlite3.OperationalError:
-        total, successful, failed = 0, 0, 0
+        total, successful, failed, avg_latency, success_rate = 0, 0, 0, 0.0, 0.0
+        failures_group = {}
+        outcomes_group = {}
     conn.close()
     return {
         "total": total,
         "successful": successful,
         "failed": failed,
+        "avg_latency": round(avg_latency, 2),
+        "success_rate": round(success_rate, 1),
+        "failures_group": failures_group,
+        "outcomes_group": outcomes_group,
     }
 
 
@@ -420,3 +507,15 @@ if __name__ == "__main__":
         elif cmd == "get_call_stats_json":
             stats = get_call_stats()
             print(json.dumps(stats))
+        elif cmd == "get_calls_history_json":
+            conn = sqlite3.connect(DB_PATH)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            try:
+                cursor.execute("SELECT * FROM calls ORDER BY id DESC")
+                rows = cursor.fetchall()
+                result = [dict(r) for r in rows]
+                print(json.dumps(result))
+            except sqlite3.OperationalError:
+                print(json.dumps([]))
+            conn.close()
