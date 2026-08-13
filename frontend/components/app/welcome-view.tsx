@@ -550,9 +550,13 @@ export const WelcomeView = ({
   const [selectedLanguage, setSelectedLanguage] = useState('English');
 
   // Call stats states
-  const [stats, setStats] = useState<{ total: number; successful: number; failed: number } | null>(
-    null
-  );
+  const [stats, setStats] = useState<{
+    total: number;
+    successful: number;
+    failed: number;
+    accepted: number;
+    rejected: number;
+  } | null>(null);
   const [loadingStats, setLoadingStats] = useState(false);
 
   const fetchStats = async () => {
@@ -1029,7 +1033,7 @@ export const WelcomeView = ({
                   </div>
                 </div>
 
-                {/* Successful Calls Card */}
+                {/* Accepted Calls Card */}
                 <div className="group relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950/80 p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-500/30 hover:shadow-[0_0_15px_rgba(16,185,129,0.08)]">
                   <div className="absolute top-0 right-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-emerald-500/5 blur-xl group-hover:bg-emerald-500/10" />
                   <div className="flex items-center gap-3">
@@ -1038,20 +1042,20 @@ export const WelcomeView = ({
                     </div>
                     <div>
                       <p className="text-[10px] font-extrabold tracking-wider text-slate-400 uppercase">
-                        Successful Calls
+                        Accepted Calls
                       </p>
                       {loadingStats ? (
                         <div className="mt-1 h-7 w-12 animate-pulse rounded bg-slate-800" />
                       ) : (
                         <h4 className="mt-0.5 text-2xl font-extrabold text-emerald-400">
-                          {stats?.successful ?? 0}
+                          {stats?.accepted ?? 0}
                         </h4>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Failed Calls Card */}
+                {/* Rejected Calls Card */}
                 <div className="group relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950/80 p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-rose-500/30 hover:shadow-[0_0_15px_rgba(244,63,94,0.08)]">
                   <div className="absolute top-0 right-0 h-24 w-24 translate-x-8 -translate-y-8 rounded-full bg-rose-500/5 blur-xl group-hover:bg-rose-500/10" />
                   <div className="flex items-center gap-3">
@@ -1060,13 +1064,13 @@ export const WelcomeView = ({
                     </div>
                     <div>
                       <p className="text-[10px] font-extrabold tracking-wider text-slate-400 uppercase">
-                        Failed Calls
+                        Rejected Calls
                       </p>
                       {loadingStats ? (
                         <div className="mt-1 h-7 w-12 animate-pulse rounded bg-slate-800" />
                       ) : (
                         <h4 className="mt-0.5 text-2xl font-extrabold text-rose-400">
-                          {stats?.failed ?? 0}
+                          {stats?.rejected ?? 0}
                         </h4>
                       )}
                     </div>

@@ -420,6 +420,12 @@ def get_call_stats() -> dict:
         cursor.execute("SELECT COUNT(*) FROM calls WHERE status = 'failed'")
         failed = cursor.fetchone()[0]
 
+        cursor.execute("SELECT COUNT(*) FROM calls WHERE failure_type != 'user_declined'")
+        accepted = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM calls WHERE failure_type = 'user_declined'")
+        rejected = cursor.fetchone()[0]
+
         # Calculate average response latency
         cursor.execute(
             "SELECT AVG(avg_latency) FROM calls WHERE status = 'success' AND avg_latency > 0"
@@ -450,6 +456,7 @@ def get_call_stats() -> dict:
 
     except sqlite3.OperationalError:
         total, successful, failed, avg_latency, success_rate = 0, 0, 0, 0.0, 0.0
+        accepted, rejected = 0, 0
         failures_group = {}
         outcomes_group = {}
     conn.close()
@@ -457,6 +464,8 @@ def get_call_stats() -> dict:
         "total": total,
         "successful": successful,
         "failed": failed,
+        "accepted": accepted,
+        "rejected": rejected,
         "avg_latency": round(avg_latency, 2),
         "success_rate": round(success_rate, 1),
         "failures_group": failures_group,

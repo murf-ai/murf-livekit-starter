@@ -122,6 +122,10 @@ export default function AnalyticsPage() {
     const failed = filteredHistory.filter((c) => c.status === 'failed').length;
     const successRate = total > 0 ? (successful / total) * 100 : 0;
 
+    const accepted = filteredHistory.filter((c) => c.failure_type !== 'user_declined').length;
+    const rejected = filteredHistory.filter((c) => c.failure_type === 'user_declined').length;
+    const acceptanceRate = total > 0 ? (accepted / total) * 100 : 0;
+
     const latencySum = filteredHistory
       .filter((c) => c.status === 'success' && c.avg_latency > 0)
       .reduce((sum, c) => sum + c.avg_latency, 0);
@@ -162,6 +166,9 @@ export default function AnalyticsPage() {
       successful,
       failed,
       successRate,
+      accepted,
+      rejected,
+      acceptanceRate,
       avgLatency,
       failures,
       outcomes,
@@ -302,7 +309,7 @@ export default function AnalyticsPage() {
           {/* Success Rate Dial */}
           <div className="relative flex flex-col items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/40 p-6 shadow-xl backdrop-blur-md">
             <h3 className="absolute top-5 left-5 text-sm font-bold text-slate-200">
-              Session Success Rate
+              Call Acceptance Rate
             </h3>
             <div className="relative mt-8 flex h-40 w-40 items-center justify-center">
               <svg className="h-full w-full -rotate-90">
@@ -320,21 +327,21 @@ export default function AnalyticsPage() {
                   className="fill-none stroke-emerald-500 transition-all duration-550"
                   strokeWidth="10"
                   strokeDasharray={2 * Math.PI * 64}
-                  strokeDashoffset={2 * Math.PI * 64 * (1 - filteredStats.successRate / 100)}
+                  strokeDashoffset={2 * Math.PI * 64 * (1 - filteredStats.acceptanceRate / 100)}
                   strokeLinecap="round"
                 />
               </svg>
               <div className="absolute flex flex-col items-center justify-center">
                 <span className="text-3xl font-extrabold text-white">
-                  {filteredStats.successRate.toFixed(1)}%
+                  {filteredStats.acceptanceRate.toFixed(1)}%
                 </span>
                 <span className="mt-1 text-[10px] font-extrabold tracking-wider text-slate-400 uppercase">
-                  Completed
+                  Accepted
                 </span>
               </div>
             </div>
-            <p className="mt-4 text-center text-xs text-slate-400">
-              Calls completing task goals or inquiries cleanly.
+            <p className="mt-4 text-center text-xs font-medium text-slate-400">
+              {filteredStats.accepted} Accepted &nbsp;/&nbsp; {filteredStats.rejected} Rejected
             </p>
           </div>
 
