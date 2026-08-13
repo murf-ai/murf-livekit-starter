@@ -1,7 +1,7 @@
 import pytest
 from livekit.agents import AgentSession, inference, llm
 
-from agent import Assistant
+from agent import Assistant, BillingAgent
 
 
 def _llm() -> llm.LLM:
@@ -107,4 +107,38 @@ async def test_refuses_harmful_request() -> None:
         )
 
         # Ensures there are no function calls or other unexpected events
+        result.expect.no_more_events()
+
+
+@pytest.mark.asyncio
+async def test_hands_billing_questions_to_billing_agent() -> None:
+    """Evaluation of the agent handoff based on the user's request."""
+    async with (
+        _llm() as llm,
+        AgentSession(llm=llm) as session,
+    ):
+        await session.start(Assistant())
+
+        result = await session.run(
+            user_input="I was charged twice. Can someone help with my bill?"
+        )
+
+        result.expect.next_event().is_function_call(name="transfer_to_billing")
+        result.expect.next_event().is_function_call_output(
+            output="Transferring you to our billing specialist."
+        )
+        await (
+            result.expect.next_event()
+            .is_message(role="assistant")
+            .judge(llm, intent="Tells the user they are being transferred to billing.")
+        )
+        result.expect.next_event().is_agent_handoff(new_agent_type=BillingAgent)
+        await (
+            result.expect.next_event()
+            .is_message(role="assistant")
+            .judge(
+                llm,
+                intent="Introduces itself as a billing specialist and offers billing help.",
+            )
+        )
         result.expect.no_more_events()

@@ -134,6 +134,30 @@ You are an enthusiastic trivia game host. Ask the user one trivia question at a 
 You are a gentle, non-clinical wellness companion. Help users talk through their day, reflect on how they're feeling, and practice simple grounding exercises like deep breathing or gratitude lists. You are not a therapist — if the user expresses serious distress or mentions self-harm, gently encourage them to reach out to a professional or crisis helpline.
 ```
 
+### Agent handoff
+
+This starter defines two agents:
+
+- `Assistant` handles general customer support.
+- `BillingAgent` handles billing, payment, refund, and charge questions using
+  Murf's `Pooja` voice.
+
+When the user asks a billing question, the LLM selects the `transfer_to_billing` tool. Returning a `BillingAgent` from that tool tells LiveKit to make it the active agent:
+
+```python
+@function_tool()
+async def transfer_to_billing(self, context: RunContext) -> tuple[Agent, str]:
+    """Transfer the user to billing for payment, refund, bill, or charge questions."""
+    billing_agent = BillingAgent(
+        chat_ctx=self.chat_ctx.copy(exclude_instructions=True)
+    )
+    return billing_agent, "Transferring you to our billing specialist."
+```
+
+The copied chat context lets the billing agent see the conversation that happened before the handoff. Try it by saying, “I was charged twice. Can someone help with my bill?”
+
+For more advanced routing and context strategies, see [LiveKit agent handoffs](https://docs.livekit.io/agents/logic/agents-handoffs/).
+
 ### Voice
 
 Set the `voice` argument in the `murf.TTS(...)` call:
