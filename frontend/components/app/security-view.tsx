@@ -52,6 +52,9 @@ interface SecurityData {
   stats: SecurityStats;
   recent_threats: ThreatEvent[];
   active_bans: ActiveBan[];
+  specialist_activity?: {
+    digital_safety: number;
+  };
 }
 
 export function SecurityView() {
@@ -161,7 +164,7 @@ export function SecurityView() {
       )}
 
       {/* KPI Stats Grid */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 p-5">
           <div className="mb-2 flex items-center justify-between text-slate-400">
             <span className="text-xs font-bold tracking-wider uppercase">Threat Events</span>
@@ -206,6 +209,17 @@ export function SecurityView() {
             {(data?.stats?.restrict_events ?? 0) + (data?.stats?.ban_events ?? 0)}
           </div>
           <div className="mt-1 text-xs text-slate-500">Automated protection triggered</div>
+        </div>
+
+        <div className="relative overflow-hidden rounded-2xl border border-violet-500/30 bg-violet-500/10 p-5">
+          <div className="mb-2 flex items-center justify-between text-violet-200">
+            <span className="text-xs font-bold tracking-wider uppercase">Safety Specialist</span>
+            <Shield className="size-4 text-violet-300" />
+          </div>
+          <div className="text-3xl font-black text-violet-200">
+            {data?.specialist_activity?.digital_safety ?? 0}
+          </div>
+          <div className="mt-1 text-xs text-violet-300/80">Digital safety takeovers</div>
         </div>
       </div>
 

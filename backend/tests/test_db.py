@@ -173,3 +173,19 @@ def test_dashboard_payload_has_no_secrets(temp_db):
     assert payload["recent_calls"][0]["call_id"] == db._public_call_id(
         "secret_room_otp_9999"
     )
+
+
+def test_specialist_handoff_summary_is_aggregate_only(temp_db):
+    db.record_specialist_handoff("room_a", "government_schemes", db_path=temp_db)
+    db.record_specialist_handoff("room_b", "digital_safety", db_path=temp_db)
+    db.record_specialist_handoff("room_c", "digital_safety", db_path=temp_db)
+    db.record_specialist_handoff("room_d", "account_support", db_path=temp_db)
+
+    summary = db.get_specialist_handoff_summary(db_path=temp_db)
+    assert summary == {
+        "total": 4,
+        "government_schemes": 1,
+        "digital_safety": 2,
+        "account_support": 1,
+    }
+    assert "room_a" not in json.dumps(summary)

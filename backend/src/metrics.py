@@ -215,7 +215,9 @@ class MetricsHandler(BaseHTTPRequestHandler):
                 req_id = body.get("request_id")
                 notes = body.get("notes")
                 if not req_id:
-                    self._send(400, b'{"error":"request_id_required"}', "application/json")
+                    self._send(
+                        400, b'{"error":"request_id_required"}', "application/json"
+                    )
                     return
                 res = manager.approve_manager_request(req_id, resolution_notes=notes)
                 self._send(
@@ -238,7 +240,9 @@ class MetricsHandler(BaseHTTPRequestHandler):
                 req_id = body.get("request_id")
                 notes = body.get("notes")
                 if not req_id:
-                    self._send(400, b'{"error":"request_id_required"}', "application/json")
+                    self._send(
+                        400, b'{"error":"request_id_required"}', "application/json"
+                    )
                     return
                 res = manager.reject_manager_request(req_id, resolution_notes=notes)
                 self._send(
@@ -261,7 +265,9 @@ class MetricsHandler(BaseHTTPRequestHandler):
                 action = body.get("action", "ban")
                 fingerprint = body.get("fingerprint")
                 if not fingerprint:
-                    self._send(400, b'{"error":"fingerprint_required"}', "application/json")
+                    self._send(
+                        400, b'{"error":"fingerprint_required"}', "application/json"
+                    )
                     return
                 if action == "unban":
                     res = threat_engine.unban_session(fingerprint)
@@ -291,7 +297,11 @@ class MetricsHandler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             body = {}
         event = str(body.get("event") or "")
-        channel = body.get("channel") if body.get("channel") in ("browser", "sip") else "browser"
+        channel = (
+            body.get("channel")
+            if body.get("channel") in ("browser", "sip")
+            else "browser"
+        )
         if event != "cancelled_before_connect":
             self._send(400, b'{"error":"unsupported_event"}', "application/json")
             return
@@ -328,7 +338,9 @@ class MetricsHandler(BaseHTTPRequestHandler):
 
                 status = (query.get("status") or [None])[0]
                 rtype = (query.get("type") or [None])[0]
-                payload = manager.list_manager_requests(status=status, request_type=rtype)
+                payload = manager.list_manager_requests(
+                    status=status, request_type=rtype
+                )
                 self._send(
                     200,
                     json.dumps(payload).encode("utf-8"),
@@ -347,6 +359,9 @@ class MetricsHandler(BaseHTTPRequestHandler):
                 import threat_engine
 
                 payload = threat_engine.get_security_dashboard_payload(since=since)
+                payload["specialist_activity"] = db.get_specialist_handoff_summary(
+                    since=since
+                )
                 self._send(
                     200,
                     json.dumps(payload).encode("utf-8"),
@@ -363,6 +378,7 @@ class MetricsHandler(BaseHTTPRequestHandler):
         if path == "/api/escalations":
             try:
                 import escalation
+
                 payload = escalation.list_escalations()
                 self._send(
                     200,
@@ -413,7 +429,9 @@ def start_metrics_server_thread(
     except OSError as err:
         logger.info("Metrics server not started on %s:%s (%s)", host, port, err)
         return None
-    thread = threading.Thread(target=httpd.serve_forever, name="call-metrics", daemon=True)
+    thread = threading.Thread(
+        target=httpd.serve_forever, name="call-metrics", daemon=True
+    )
     thread.start()
     logger.info("Call dashboard on http://%s:%s/dashboard", host, port)
     return thread

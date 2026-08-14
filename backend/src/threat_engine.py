@@ -309,7 +309,10 @@ class ThreatScorer:
 
         # Check if this session is already banned (bypass for default/empty rooms in pytest)
         import sys
-        is_test_default = "pytest" in sys.modules and (not room_id or str(room_id).lower() in ("none", "default_room", "default"))
+
+        is_test_default = "pytest" in sys.modules and (
+            not room_id or str(room_id).lower() in ("none", "default_room", "default")
+        )
         if not is_test_default and self._check_existing_ban():
             self._is_banned = True
             self._cumulative_score = LEVEL_THRESHOLDS[ThreatLevel.BAN]
@@ -382,9 +385,13 @@ class ThreatScorer:
         self._cumulative_score += SIGNAL_WEIGHTS[ThreatSignal.VERIFICATION_FAILED]
         self._signals_history.append(ThreatSignal.VERIFICATION_FAILED)
 
-    def force_ban(self, reason: str = "3 failed Safe Key verification attempts") -> None:
+    def force_ban(
+        self, reason: str = "3 failed Safe Key verification attempts"
+    ) -> None:
         """Force ban this session immediately."""
-        self._cumulative_score = max(self._cumulative_score + 100, LEVEL_THRESHOLDS[ThreatLevel.BAN])
+        self._cumulative_score = max(
+            self._cumulative_score + 100, LEVEL_THRESHOLDS[ThreatLevel.BAN]
+        )
         self._last_threat_level = ThreatLevel.BAN
         self._is_banned = True
         self._signals_history.append(ThreatSignal.SAFE_KEY_FAILED)
@@ -423,9 +430,7 @@ class ThreatScorer:
             clean_new = new_name.strip().lower()
             if clean_new not in ("caller", "unknown", ""):
                 # Check if they've used a DIFFERENT name before
-                prev_names = [
-                    n for n in self._names_used if n != clean_new
-                ]
+                prev_names = [n for n in self._names_used if n != clean_new]
                 if prev_names and self._turn_count > 2:
                     signals.append(ThreatSignal.IDENTITY_SWITCH)
                     details["identity_switch"] = {
@@ -454,9 +459,7 @@ class ThreatScorer:
         if _OTP_BYPASS_RE.search(text):
             signals.append(ThreatSignal.OTP_PIN_BYPASS)
             details["otp_bypass"] = True
-            logger.warning(
-                "THREAT: OTP/PIN bypass attempt in room %s", self.room_id
-            )
+            logger.warning("THREAT: OTP/PIN bypass attempt in room %s", self.room_id)
 
         # ── Signal 4: Brute-force lookup ──
         if self._lookup_count > 5:
@@ -508,9 +511,7 @@ class ThreatScorer:
         if self._check_honeypot_triggered(text):
             signals.append(ThreatSignal.HONEYPOT_TRIGGERED)
             details["honeypot_triggered"] = True
-            logger.critical(
-                "THREAT: HONEYPOT TRIGGERED in room %s!", self.room_id
-            )
+            logger.critical("THREAT: HONEYPOT TRIGGERED in room %s!", self.room_id)
 
         # ── Calculate scores ──
         turn_score = sum(SIGNAL_WEIGHTS.get(s, 0) for s in signals)
@@ -546,7 +547,9 @@ class ThreatScorer:
 
         # ── Record event if any signals detected ──
         if signals:
-            self._record_threat_event(signals, turn_score, threat_level, action, text, details)
+            self._record_threat_event(
+                signals, turn_score, threat_level, action, text, details
+            )
 
         result = TurnResult(
             signals=signals,
@@ -772,9 +775,7 @@ class ThreatScorer:
         }
 
         # Dispatch webhook
-        _dispatch_security_webhook(
-            {"event": "incident_report", "report": report}
-        )
+        _dispatch_security_webhook({"event": "incident_report", "report": report})
 
         return report
 
@@ -801,9 +802,7 @@ class ThreatScorer:
         if ThreatSignal.IMPERSONATION_ATTEMPT.value in unique:
             parts.append("Claimed to be bank/RBI/government official.")
         if ThreatSignal.BRUTE_FORCE_LOOKUP.value in unique:
-            parts.append(
-                f"Excessive profile lookups ({self._lookup_count} attempts)."
-            )
+            parts.append(f"Excessive profile lookups ({self._lookup_count} attempts).")
 
         parts.append(
             f"Total threat score: {self._cumulative_score}. "
@@ -847,9 +846,7 @@ def generate_challenge_question(
                 "kaunsi scheme ke liye eligibility check ki thi?"
             )
         else:
-            question = (
-                "For security, which scheme did you last check eligibility for?"
-            )
+            question = "For security, which scheme did you last check eligibility for?"
         return question, last_scheme.lower()
 
     return None
@@ -881,9 +878,7 @@ def verify_challenge_answer(answer: str, expected: str) -> bool:
 # ─── Ban Management (Public API) ───────────────────────────────────────────
 
 
-def is_session_banned(
-    fingerprint: str, db_path: Path | str | None = None
-) -> bool:
+def is_session_banned(fingerprint: str, db_path: Path | str | None = None) -> bool:
     """Check if a session fingerprint is currently banned."""
     try:
         init_security_db(db_path)
@@ -932,9 +927,13 @@ def ban_session_manual(
     """Manually ban a session from the dashboard."""
     try:
         init_security_db(db_path)
-        expires = None if permanent else (
-            datetime.now(timezone.utc) + timedelta(hours=duration_hours)
-        ).isoformat()
+        expires = (
+            None
+            if permanent
+            else (
+                datetime.now(timezone.utc) + timedelta(hours=duration_hours)
+            ).isoformat()
+        )
         with _get_conn(db_path) as conn:
             conn.execute(
                 """
@@ -1122,9 +1121,7 @@ def _dispatch_security_webhook(payload: dict[str, Any]) -> None:
     # Always log locally
     log_path = DEFAULT_DB_PATH.parent / "security_events.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(
-        {"ts": _now(), **payload}, ensure_ascii=False
-    )
+    line = json.dumps({"ts": _now(), **payload}, ensure_ascii=False)
     try:
         with log_path.open("a", encoding="utf-8") as fh:
             fh.write(line + "\n")

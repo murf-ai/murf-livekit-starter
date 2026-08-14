@@ -83,9 +83,17 @@ def init_db(db_path: Path | str | None = None) -> None:
             )
             """
         )
-        cols = {
-            row[1] for row in cursor.execute("PRAGMA table_info(call_outcomes)")
-        }
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS specialist_handoffs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                room_id TEXT NOT NULL,
+                specialist_id TEXT NOT NULL,
+                occurred_at TEXT NOT NULL
+            )
+            """
+        )
+        cols = {row[1] for row in cursor.execute("PRAGMA table_info(call_outcomes)")}
         if "connected" not in cols:
             cursor.execute(
                 "ALTER TABLE call_outcomes ADD COLUMN connected INTEGER DEFAULT 0"
@@ -193,7 +201,10 @@ def safe_key_exists(safe_key: str, db_path: Path | str | None = None) -> bool:
         for r in rows:
             try:
                 facts = json.loads(r["facts"])
-                if isinstance(facts, dict) and facts.get("safe_key", "").strip().lower() == clean_key:
+                if (
+                    isinstance(facts, dict)
+                    and facts.get("safe_key", "").strip().lower() == clean_key
+                ):
                     return True
             except Exception:
                 continue
@@ -201,9 +212,13 @@ def safe_key_exists(safe_key: str, db_path: Path | str | None = None) -> bool:
     # 2. Check manager_approvals table
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT count(name) FROM sqlite_master WHERE type='table' AND name='manager_approvals'")
+        cursor.execute(
+            "SELECT count(name) FROM sqlite_master WHERE type='table' AND name='manager_approvals'"
+        )
         if cursor.fetchone()[0] == 1:
-            cursor.execute("SELECT safe_key FROM manager_approvals WHERE status != 'REJECTED'")
+            cursor.execute(
+                "SELECT safe_key FROM manager_approvals WHERE status != 'REJECTED'"
+            )
             rows = cursor.fetchall()
             for r in rows:
                 if r["safe_key"] and r["safe_key"].strip().lower() == clean_key:
@@ -211,11 +226,12 @@ def safe_key_exists(safe_key: str, db_path: Path | str | None = None) -> bool:
 
     return False
 
-
     return None
 
 
-def get_caller_by_safe_key_in_text(text: str, db_path: Path | str | None = None) -> dict | None:
+def get_caller_by_safe_key_in_text(
+    text: str, db_path: Path | str | None = None
+) -> dict | None:
     """Retrieve a caller's memory record if their Safe Key is found as a substring/word within the input text."""
     if not text:
         return None
@@ -223,7 +239,9 @@ def get_caller_by_safe_key_in_text(text: str, db_path: Path | str | None = None)
     clean_text = text.strip().replace(" ", "").lower()
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT user_id, name, language_preference, facts, consent_given, last_interaction, created_at, updated_at FROM callers WHERE facts IS NOT NULL")
+        cursor.execute(
+            "SELECT user_id, name, language_preference, facts, consent_given, last_interaction, created_at, updated_at FROM callers WHERE facts IS NOT NULL"
+        )
         rows = cursor.fetchall()
         for r in rows:
             try:
@@ -543,6 +561,28 @@ def record_escalation(room_id: str, db_path: Path | str | None = None) -> None:
     _update_call_flags(room_id, db_path, escalation_created=True)
 
 
+def record_specialist_handoff(
+    room_id: str, specialist_id: str, db_path: Path | str | None = None
+) -> None:
+    """Record a specialist takeover without storing caller content or identity."""
+    if not room_id or specialist_id not in {
+        "government_schemes",
+        "digital_safety",
+        "account_support",
+    }:
+        return
+    init_db(db_path)
+    with get_db_connection(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO specialist_handoffs (room_id, specialist_id, occurred_at)
+            VALUES (?, ?, ?)
+            """,
+            (room_id, specialist_id, _now_iso()),
+        )
+        conn.commit()
+
+
 def record_tool_error(room_id: str, db_path: Path | str | None = None) -> None:
     _update_call_flags(room_id, db_path, tool_failure=True)
 
@@ -642,7 +682,9 @@ def record_cancelled_call(
     db_path: Path | str | None = None,
 ) -> dict:
     """Record a call the user cancelled before connecting."""
-    rid = room_id or f"cancelled_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    rid = (
+        room_id or f"cancelled_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    )
     start_call(rid, channel, db_path)
     return end_call(rid, channel, db_path)
 
@@ -748,6 +790,9 @@ def get_dashboard_payload(
     stats = get_call_stats(channel=channel, since=since, db_path=db_path)
     return {
         **stats,
+        "specialist_handoffs": get_specialist_handoff_summary(
+            since=since, db_path=db_path
+        ),
         "recent_calls": get_recent_calls(
             limit=limit, channel=channel, since=since, db_path=db_path
         ),
@@ -758,10 +803,40 @@ def get_dashboard_payload(
     }
 
 
+def get_specialist_handoff_summary(
+    since: str | None = None, db_path: Path | str | None = None
+) -> dict:
+    """Return aggregate specialist activity for dashboards, with no caller data."""
+    init_db(db_path)
+    where = ""
+    params: list[str] = []
+    if since:
+        where = "WHERE occurred_at >= ?"
+        params.append(since)
+    with get_db_connection(db_path) as conn:
+        rows = conn.execute(
+            f"""
+            SELECT specialist_id, COUNT(*) AS count
+            FROM specialist_handoffs
+            {where}
+            GROUP BY specialist_id
+            """,
+            params,
+        ).fetchall()
+    by_specialist = {row["specialist_id"]: int(row["count"]) for row in rows}
+    return {
+        "total": sum(by_specialist.values()),
+        "government_schemes": by_specialist.get("government_schemes", 0),
+        "digital_safety": by_specialist.get("digital_safety", 0),
+        "account_support": by_specialist.get("account_support", 0),
+    }
+
+
 def clear_call_outcomes(db_path: Path | str | None = None) -> None:
     """Clear all records in the call_outcomes table."""
     init_db(db_path)
     with get_db_connection(db_path) as conn:
         conn.execute("DELETE FROM call_outcomes")
+        conn.execute("DELETE FROM specialist_handoffs")
         conn.commit()
     logger.info("Cleared all records in call_outcomes table.")

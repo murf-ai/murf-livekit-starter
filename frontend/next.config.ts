@@ -6,10 +6,8 @@ const nextConfig: NextConfig = {
     // These warnings come from upstream LiveKit/AI UI components, not our code.
     ignoreDuringBuilds: true,
   },
-  experimental: {
-    turbopack: {
-      root: path.resolve(__dirname, '..'),
-    },
+  turbopack: {
+    root: path.resolve(__dirname, '..'),
   },
   async rewrites() {
     const metrics = process.env.METRICS_ORIGIN ?? 'http://127.0.0.1:8082';

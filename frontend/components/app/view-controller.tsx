@@ -31,7 +31,6 @@ function sanitizeQuery(text: string): string {
 const MotionWelcomeView = motion.create(WelcomeView);
 const MotionConnectingView = motion.create(ConnectingView);
 const MotionSessionView = motion.create(AgentSessionView_01);
-const MotionCallEndedView = motion.create(CallEndedView);
 
 const VIEW_MOTION_PROPS = {
   variants: {
@@ -317,12 +316,13 @@ export function ViewController({ appConfig }: ViewControllerProps) {
 
                 {/* State 5: Call Ended */}
                 {uiState === 'ended' && (
-                  <MotionCallEndedView
+                  <motion.div
                     key="call-ended"
                     {...VIEW_MOTION_PROPS}
-                    onStartAgain={handleStartCall}
-                    summary={callSummary}
-                  />
+                    className="flex w-full flex-1"
+                  >
+                    <CallEndedView onStartAgain={handleStartCall} summary={callSummary} />
+                  </motion.div>
                 )}
               </AnimatePresence>
             </div>

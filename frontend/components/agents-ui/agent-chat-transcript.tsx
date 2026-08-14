@@ -62,6 +62,52 @@ function isInternalOrMetaMessage(text: string | undefined): boolean {
   return meta.test(t);
 }
 
+const SPECIALISTS = [
+  {
+    label: 'Government Scheme Specialist',
+    names: ['Government Scheme Specialist', 'Sarkari Yojana Specialist'],
+  },
+  {
+    label: 'Digital Banking Safety Specialist',
+    names: [
+      'Digital Banking Safety Specialist',
+      'Digital Banking Suraksha Specialist',
+      'Security Specialist',
+    ],
+  },
+  {
+    label: 'Bank Account Support Specialist',
+    names: ['Bank Account Support Specialist', 'Bank Khata Sahayata Specialist'],
+  },
+] as const;
+
+function speakerTransition(text: string): string | 'jan_sahay' | null {
+  const normalized = text.toLocaleLowerCase();
+  if (
+    normalized.includes('return you to jan sahay') ||
+    normalized.includes('jan sahay ke paas wapas')
+  ) {
+    return 'jan_sahay';
+  }
+  for (const specialist of SPECIALISTS) {
+    if (
+      specialist.names.some((name) => {
+        const n = name.toLocaleLowerCase();
+        return (
+          normalized.includes(`i am your ${n}`) ||
+          normalized.includes(`main aapki ${n} hoon`) ||
+          normalized.includes(`${n} is taking over`) ||
+          normalized.includes(`${n} sambhalenge`) ||
+          normalized.includes(`this needs our ${n}`)
+        );
+      })
+    ) {
+      return specialist.label;
+    }
+  }
+  return null;
+}
+
 export function AgentChatTranscript({
   agentState,
   messages = [],
@@ -69,6 +115,7 @@ export function AgentChatTranscript({
   ...props
 }: AgentChatTranscriptProps) {
   const visibleMessages = messages.filter((m) => !isInternalOrMetaMessage(m.message));
+  let currentSpecialist: string | null = null;
 
   return (
     <Conversation className={className} {...props}>
@@ -77,16 +124,42 @@ export function AgentChatTranscript({
           const { id, timestamp, from, message } = receivedMessage;
           const locale = navigator?.language ?? 'en-US';
           const messageOrigin = from?.isLocal ? 'user' : 'assistant';
+          const takeover =
+            messageOrigin === 'assistant' ? speakerTransition(message) : null;
+          if (takeover === 'jan_sahay') {
+            currentSpecialist = null;
+          } else if (takeover) {
+            currentSpecialist = takeover;
+          }
+          const specialistName =
+            messageOrigin === 'assistant' ? currentSpecialist : null;
+          const isTakeover = Boolean(takeover && takeover !== 'jan_sahay');
           const time = new Date(timestamp);
           const title = time.toLocaleTimeString(locale, { timeStyle: 'full' });
 
           return (
             <Message key={id} title={title} from={messageOrigin}>
-              <MessageContent>
+              <MessageContent
+                className={
+                  specialistName
+                    ? '!border-violet-400/45 !bg-violet-950/50 !shadow-violet-950/30'
+                    : undefined
+                }
+              >
                 {messageOrigin === 'assistant' && (
-                  <div className="mb-1 flex items-center gap-2 border-b border-emerald-500/15 pb-1.5 text-[11px] font-medium tracking-wider text-emerald-400 uppercase">
-                    <span className="inline-block size-1.5 animate-pulse rounded-full bg-emerald-400" />
-                    Jan Sahay AI
+                  <div
+                    className={`mb-1 flex items-center gap-2 border-b pb-1.5 text-[11px] font-medium tracking-wider uppercase ${
+                      specialistName
+                        ? 'border-violet-400/20 text-violet-300'
+                        : 'border-emerald-500/15 text-emerald-400'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block size-1.5 animate-pulse rounded-full ${
+                        specialistName ? 'bg-violet-300' : 'bg-emerald-400'
+                      }`}
+                    />
+                    {specialistName ? `${specialistName} · Taking over` : 'Jan Sahay AI'}
                   </div>
                 )}
                 <MessageResponse>{message}</MessageResponse>

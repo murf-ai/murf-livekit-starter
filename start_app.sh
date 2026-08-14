@@ -9,7 +9,8 @@ else
   echo "Warning: livekit-server not found. Skipping local LiveKit startup and using your configured LIVEKIT_URL instead."
 fi
 
-(cd backend && uv run python src/metrics.py) &
+# The agent starts the metrics/dashboard HTTP server itself on port 8082.
+# Starting metrics.py separately races for the same port.
 (cd backend && uv run python src/agent.py dev) &
 (cd frontend && pnpm dev) &
 

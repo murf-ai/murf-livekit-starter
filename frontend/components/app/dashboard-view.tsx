@@ -45,6 +45,12 @@ interface MetricsData {
   avg_first_reply_latency_ms: number | null;
   failure_types: Record<string, number>;
   recent_calls: Call[];
+  specialist_handoffs: {
+    total: number;
+    government_schemes: number;
+    digital_safety: number;
+    account_support: number;
+  };
 }
 
 interface DashboardViewProps {
@@ -362,6 +368,29 @@ export function DashboardView({
               </span>
             </div>
             <p className="mt-4 text-xs font-medium text-slate-400">Avg speech response time</p>
+          </div>
+        </div>
+
+        <div className="mb-8 rounded-2xl border border-violet-100 bg-violet-50/60 p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-sm font-bold tracking-wider text-violet-900 uppercase">
+              Specialist Team Activity
+            </h2>
+            <span className="text-xs font-semibold text-violet-700">
+              {data?.specialist_handoffs?.total ?? 0} total takeovers
+            </span>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {[
+              ['Government Schemes', data?.specialist_handoffs?.government_schemes ?? 0],
+              ['Digital Safety', data?.specialist_handoffs?.digital_safety ?? 0],
+              ['Account Support', data?.specialist_handoffs?.account_support ?? 0],
+            ].map(([label, count]) => (
+              <div key={label} className="rounded-xl border border-violet-100 bg-white px-4 py-3">
+                <p className="text-xs font-semibold text-slate-500">{label}</p>
+                <p className="mt-1 text-2xl font-extrabold text-violet-700">{count}</p>
+              </div>
+            ))}
           </div>
         </div>
 

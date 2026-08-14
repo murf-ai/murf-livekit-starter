@@ -304,4 +304,3 @@ def update_manager_request(
         )
         conn.commit()
     return {"ok": True, "request_id": request_id}
-

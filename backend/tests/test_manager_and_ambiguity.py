@@ -1,14 +1,15 @@
-import pytest
 import asyncio
 import uuid
-import json
 from unittest.mock import AsyncMock, MagicMock
-from livekit.agents import llm
+
+import pytest
 from livekit import rtc
-import manager
+from livekit.agents import llm
+
 import db
-import threat_engine
+import manager
 from agent import Assistant
+
 
 @pytest.mark.asyncio
 async def test_name_ambiguity_clarification_and_resolve() -> None:
@@ -27,7 +28,13 @@ async def test_name_ambiguity_clarification_and_resolve() -> None:
 
     # Pre-populate DB with a known "Bria" profile that has memory facts
     db.init_db()
-    db.save_caller("bria", "Bria", "en", {"safe_key": "abcd", "last_topic": "account creation"}, True)
+    db.save_caller(
+        "bria",
+        "Bria",
+        "en",
+        {"safe_key": "abcd", "last_topic": "account creation"},
+        True,
+    )
 
     # Mock chat_ctx
     chat_ctx = llm.ChatContext()
@@ -112,7 +119,7 @@ async def test_name_ambiguity_multiple_switches_ban() -> None:
     assert assistant.get_threat_scorer().is_banned is True
     session_mock.say.assert_called_with(
         "Identity verification failed. Access has been restricted due to multiple identity changes.",
-        allow_interruptions=False
+        allow_interruptions=False,
     )
 
 
@@ -149,7 +156,9 @@ async def test_manager_rejection_closes_session() -> None:
 
     # Modify request to REJECTED in DB
     with manager._get_conn() as conn:
-        conn.execute("UPDATE manager_approvals SET status = 'REJECTED' WHERE request_id = 'test-tx-123'")
+        conn.execute(
+            "UPDATE manager_approvals SET status = 'REJECTED' WHERE request_id = 'test-tx-123'"
+        )
         conn.commit()
 
     # Wait for polling to detect rejection and close the session
@@ -167,8 +176,8 @@ async def test_manager_rejection_closes_session() -> None:
 
 
 @pytest.mark.asyncio
-async def test_identity_mismatch_ban() -> None:
-    """Test that a caller named Priya attempting to verify with Bria's Safe Key (abcd) is immediately banned and closed."""
+async def test_identity_mismatch_uses_three_safe_key_attempts() -> None:
+    """A mismatched name/key consumes attempts instead of banning immediately."""
     assistant = Assistant()
     assistant._call_room_id = f"test_room_{uuid.uuid4().hex}"
     assistant._reply_lang = "en"
@@ -192,18 +201,63 @@ async def test_identity_mismatch_ban() -> None:
     # Priya says "Priya a b c d" (which maps to abcd/Bria)
     msg = llm.ChatMessage(role="user", content=["Priya a b c d"])
 
+    for attempts_remaining in (2, 1):
+        with pytest.raises(llm.StopResponse):
+            await assistant.on_user_turn_completed(chat_ctx, msg)
+        assert assistant._awaiting_safe_key_verification is True
+        assert assistant._safe_key_attempts_remaining == attempts_remaining
+        assert not assistant.get_threat_scorer().is_banned
+
     with pytest.raises(llm.StopResponse):
         await assistant.on_user_turn_completed(chat_ctx, msg)
 
-    assert assistant._known_caller_name == "Banned"
     assert assistant.get_threat_scorer().is_banned is True
     session_mock.say.assert_called_with(
-        "Security protocol activated. Access has been restricted due to identity verification mismatch.",
-        allow_interruptions=False
+        "Security verification failed after 3 attempts. Safe Key protocol activated — "
+        "access to this session has been restricted.",
+        allow_interruptions=False,
     )
-    # Wait for the post-ban sleep to finish and verify call is closed
-    await asyncio.sleep(4.5)
-    session_mock.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_manager_case_is_created_only_after_matching_name_and_safe_key() -> None:
+    assistant = Assistant()
+    assistant._call_room_id = f"test_room_{uuid.uuid4().hex}"
+    assistant._reply_lang = "en"
+    session_mock = MagicMock()
+    session_mock.say = AsyncMock()
+    session_mock.close = AsyncMock()
+    session_mock.room = MagicMock()
+    session_mock.room.connection_state = rtc.ConnectionState.CONN_CONNECTED
+    assistant._session = session_mock
+
+    db.init_db()
+    safe_key = f"verifykey{uuid.uuid4().hex}"
+    db.save_caller(
+        "verify_user",
+        "Verify User",
+        "en",
+        {"safe_key": safe_key},
+        True,
+    )
+    chat_ctx = llm.ChatContext()
+
+    with pytest.raises(llm.StopResponse):
+        await assistant.on_user_turn_completed(
+            chat_ctx, llm.ChatMessage(role="user", content=["Transfer 100 rupees"])
+        )
+    assert assistant._safe_key_request_id is None
+
+    with pytest.raises(llm.StopResponse):
+        await assistant.on_user_turn_completed(
+            chat_ctx,
+            llm.ChatMessage(role="user", content=[f"Verify User {safe_key}"]),
+        )
+    assert assistant._safe_key_request_id is not None
+
+    polling_task = getattr(assistant, "_polling_task", None)
+    if polling_task:
+        polling_task.cancel()
 
 
 @pytest.mark.asyncio
@@ -241,13 +295,14 @@ async def test_manager_approval_status_inquiries() -> None:
         await assistant.on_user_turn_completed(chat_ctx, msg)
 
     session_mock.say.assert_called_with(
-        "Yes, Senior Manager X has approved your request.",
-        allow_interruptions=True
+        "Yes, Senior Manager X has approved your request.", allow_interruptions=True
     )
 
     # 2. Update to REJECTED
     with manager._get_conn() as conn:
-        conn.execute("UPDATE manager_approvals SET status = 'REJECTED' WHERE request_id = 'status-test-1'")
+        conn.execute(
+            "UPDATE manager_approvals SET status = 'REJECTED' WHERE request_id = 'status-test-1'"
+        )
         conn.commit()
 
     msg = llm.ChatMessage(role="user", content=["did the manager confirm"])
@@ -255,13 +310,14 @@ async def test_manager_approval_status_inquiries() -> None:
         await assistant.on_user_turn_completed(chat_ctx, msg)
 
     session_mock.say.assert_called_with(
-        "No, Senior Manager X has rejected your request.",
-        allow_interruptions=True
+        "No, Senior Manager X has rejected your request.", allow_interruptions=True
     )
 
     # 3. Update to PENDING
     with manager._get_conn() as conn:
-        conn.execute("UPDATE manager_approvals SET status = 'PENDING_APPROVAL' WHERE request_id = 'status-test-1'")
+        conn.execute(
+            "UPDATE manager_approvals SET status = 'PENDING_APPROVAL' WHERE request_id = 'status-test-1'"
+        )
         conn.commit()
 
     msg = llm.ChatMessage(role="user", content=["is my request pending approval"])
@@ -270,5 +326,5 @@ async def test_manager_approval_status_inquiries() -> None:
 
     session_mock.say.assert_called_with(
         "No, it has not been approved yet. It is still pending manager review.",
-        allow_interruptions=True
+        allow_interruptions=True,
     )
