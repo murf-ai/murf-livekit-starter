@@ -241,6 +241,60 @@ export function AgentSessionView_01({
         {...BOTTOM_VIEW_MOTION_PROPS}
         className="absolute inset-x-3 bottom-0 z-50 md:inset-x-12"
       >
+        {/* Active speaker & State Indicator */}
+        <div className="mb-4 flex justify-center">
+          <div
+            className={cn(
+              'flex items-center gap-2 rounded-full border px-4 py-1.5 text-xs font-bold tracking-wide shadow-sm transition-all duration-300',
+              agentState === 'listening' &&
+                'animate-pulse border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400',
+              agentState === 'speaking' &&
+                'border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+              agentState === 'thinking' &&
+                'border-indigo-500/20 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400',
+              (agentState === 'idle' ||
+                agentState === 'initializing' ||
+                agentState === 'pre-connect-buffering') &&
+                'bg-muted border-muted-foreground/10 text-muted-foreground'
+            )}
+          >
+            {agentState === 'listening' && (
+              <>
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500"></span>
+                </span>
+                <span>Listening to you...</span>
+              </>
+            )}
+            {agentState === 'speaking' && (
+              <>
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500"></span>
+                </span>
+                <span>Dhan Rakshak is speaking...</span>
+              </>
+            )}
+            {agentState === 'thinking' && (
+              <>
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></span>
+                </span>
+                <span>Dhan Rakshak is thinking...</span>
+              </>
+            )}
+            {(agentState === 'idle' ||
+              agentState === 'initializing' ||
+              agentState === 'pre-connect-buffering') && (
+              <>
+                <span className="h-2 w-2 rounded-full bg-gray-400"></span>
+                <span>Dhan Rakshak is ready</span>
+              </>
+            )}
+          </div>
+        </div>
+
         {/* Pre-connect message */}
         {isPreConnectBufferEnabled && (
           <AnimatePresence>
