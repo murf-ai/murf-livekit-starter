@@ -109,17 +109,26 @@ const AGENT_STATE_LABELS: Record<string, { label: string; className: string }> =
   },
 };
 
-function AgentStateBadge({ agentState }: { agentState?: string }) {
+function AgentStateBadge({ agentState, activeAgentName }: { agentState?: string; activeAgentName?: string }) {
   const config = AGENT_STATE_LABELS[agentState ?? 'disconnected'] ?? AGENT_STATE_LABELS.disconnected;
+  const displayName = activeAgentName || 'FinSafe Assistant';
+  let labelText = config.label;
+
+  if (agentState === 'speaking') {
+    labelText = `${displayName} Speaking`;
+  } else if (agentState === 'listening') {
+    labelText = `${displayName} Active`;
+  }
+
   return (
     <div
       className={cn(
         'absolute top-4 left-1/2 z-20 -translate-x-1/2 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-bold uppercase tracking-wider',
-        config.className
+        activeAgentName ? 'bg-[#9333EA]/20 text-[#A855F7] border-[#A855F7]/50 shadow-md shadow-[#9333EA]/20' : config.className
       )}
     >
       <span className="size-2 rounded-full bg-current animate-pulse" />
-      <span>{config.label}</span>
+      <span>{labelText}</span>
     </div>
   );
 }
@@ -222,6 +231,25 @@ export function AgentSessionView_01({
   const [chatOpen, setChatOpen] = useState(true);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { state: agentState } = useAgent();
+  const [activeAgentName, setActiveAgentName] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    const room = session?.room;
+    if (!room) return;
+
+    const checkAttributes = () => {
+      const activeAttr = room.localParticipant?.attributes?.active_agent;
+      if (activeAttr) {
+        setActiveAgentName(activeAttr);
+      }
+    };
+
+    checkAttributes();
+    room.on('participantAttributesChanged', checkAttributes);
+    return () => {
+      room.off('participantAttributesChanged', checkAttributes);
+    };
+  }, [session]);
 
   const controls: AgentControlBarControls = {
     leave: true,
@@ -247,7 +275,7 @@ export function AgentSessionView_01({
       {...props}
     >
       <Fade top className="absolute inset-x-4 top-0 z-10 h-40" />
-      <AgentStateBadge agentState={agentState} />
+      <AgentStateBadge agentState={agentState} activeAgentName={activeAgentName} />
       {/* transcript */}
 
       <div className="absolute top-0 bottom-[135px] flex w-full flex-col md:bottom-[170px]">
