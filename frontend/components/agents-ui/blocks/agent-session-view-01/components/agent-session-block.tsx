@@ -185,7 +185,9 @@ export function AgentSessionView_01({
   const { messages } = useSessionMessages(session);
   const [chatOpen, setChatOpen] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const { state: agentState } = useAgent();
+  const agent = useAgent();
+  const agentState = agent.state;
+  const agentId = agent.attributes?.agent_id;
   const { state: voiceAssistantState } = useVoiceAssistant();
 
   const controls: AgentControlBarControls = {
@@ -212,22 +214,73 @@ export function AgentSessionView_01({
         ? 'listening'
         : 'ready';
 
+  const getAgentLabel = (id: string | undefined) => {
+    switch (id) {
+      case 'scheme_specialist_agent':
+        return 'Sita AI (Government Scheme Specialist)';
+      case 'crop_specialist_agent':
+        return 'Sita AI (Crop & Agriculture Specialist)';
+      case 'business_loan_specialist_agent':
+        return 'Sita AI (Business Loan Specialist)';
+      case 'assistant':
+      default:
+        return 'Sita AI (Main Assistant Coordinator)';
+    }
+  };
+
+  const getAgentDescription = (id: string | undefined, speakerState: string) => {
+    if (speakerState === 'speaking') {
+      switch (id) {
+        case 'scheme_specialist_agent':
+          return 'Explaining savings, insurance, pension, or Sukanya Samriddhi schemes.';
+        case 'crop_specialist_agent':
+          return 'Explaining farming welfare, land requirements, or PM-KISAN rules.';
+        case 'business_loan_specialist_agent':
+          return 'Explaining entrepreneurship, micro-enterprise, or Mudra loans.';
+        default:
+          return 'Sita AI is replying to you now.';
+      }
+    } else if (speakerState === 'listening') {
+      switch (id) {
+        case 'scheme_specialist_agent':
+          return 'Listening for your savings, insurance, pension, or Sukanya Samriddhi queries.';
+        case 'crop_specialist_agent':
+          return 'Listening for your crop welfare, farming, or PM-KISAN questions.';
+        case 'business_loan_specialist_agent':
+          return 'Listening for your micro-enterprise growth or Mudra loan questions.';
+        default:
+          return 'Listening to your request.';
+      }
+    } else {
+      switch (id) {
+        case 'scheme_specialist_agent':
+          return 'Scheme specialist is ready to guide you.';
+        case 'crop_specialist_agent':
+          return 'Crop specialist is ready to guide you.';
+        case 'business_loan_specialist_agent':
+          return 'Business loan specialist is ready to guide you.';
+        default:
+          return 'Ready to assist. Say hello or ask a question to begin.';
+      }
+    }
+  };
+
   const statusConfig = {
     speaking: {
-      label: 'Support agent is speaking',
-      description: 'Your advisor is providing the next formal step for your request.',
+      label: getAgentLabel(agentId),
+      description: getAgentDescription(agentId, 'speaking'),
       icon: Volume2,
       accent: 'from-violet-500/20 to-fuchsia-500/10 text-violet-700 dark:text-violet-200',
     },
     listening: {
-      label: 'Listening to your request',
-      description: 'The support agent is ready to assist with your account or service enquiry.',
+      label: getAgentLabel(agentId),
+      description: getAgentDescription(agentId, 'listening'),
       icon: Mic,
       accent: 'from-sky-500/20 to-cyan-500/10 text-sky-700 dark:text-sky-200',
     },
     ready: {
-      label: 'Ready to assist',
-      description: 'You can speak naturally and the advisor will guide you through the next step.',
+      label: getAgentLabel(agentId),
+      description: getAgentDescription(agentId, 'ready'),
       icon: ShieldCheck,
       accent: 'from-emerald-500/20 to-lime-500/10 text-emerald-700 dark:text-emerald-200',
     },

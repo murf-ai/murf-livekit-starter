@@ -420,10 +420,14 @@ def get_call_stats() -> dict:
         cursor.execute("SELECT COUNT(*) FROM calls WHERE status = 'failed'")
         failed = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM calls WHERE failure_type != 'user_declined'")
+        cursor.execute(
+            "SELECT COUNT(*) FROM calls WHERE failure_type != 'user_declined'"
+        )
         accepted = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM calls WHERE failure_type = 'user_declined'")
+        cursor.execute(
+            "SELECT COUNT(*) FROM calls WHERE failure_type = 'user_declined'"
+        )
         rejected = cursor.fetchone()[0]
 
         # Calculate average response latency

@@ -6,6 +6,7 @@ from livekit.agents import (
     Agent,
     AgentServer,
     AgentSession,
+    AgentTask,
     JobContext,
     JobProcess,
     cli,
@@ -13,6 +14,7 @@ from livekit.agents import (
     room_io,
     tokenize,
 )
+from livekit.agents.llm import ChatContext
 from livekit.plugins import deepgram, google, murf, noise_cancellation, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
@@ -31,6 +33,202 @@ except ImportError:
     import src.db as db
 
 
+class SchemeSpecialistAgent(AgentTask[str]):
+    def __init__(self, user_id: str, chat_ctx: ChatContext) -> None:
+        user_info = db.get_user(user_id)
+        facts_summary = ""
+        if user_info:
+            facts_summary = f"\nSAVED USER DETAILS AND FACTS:\nName: {user_info.get('name')}\nLanguage Preference: {user_info.get('language_preference')}\nFacts: {user_info.get('facts')}"
+
+        instructions = (
+            "ROLE & IDENTITY:\n"
+            "- You are the Government Scheme Specialist for National Financial Literacy Council of India.\n"
+            "- Your sole job is to help users with eligibility and document requirements for savings, insurance, and pension schemes:\n"
+            "  1. Savings scheme: Pradhan Mantri Jan Dhan Yojana (PMJDY)\n"
+            "  2. Accidental Insurance: Pradhan Mantri Suraksha Bima Yojana (PMSBY)\n"
+            "  3. Life Insurance: Pradhan Mantri Jeevan Jyoti Bima Yojana (PMJJBY)\n"
+            "  4. Pension & Retirement: Atal Pension Yojana (APY)\n"
+            "  5. Girl Child Welfare & Savings: Sukanya Samriddhi Yojana (SSY)\n"
+            '- GREETING: When you take over, greet the user warmly and introduce yourself, mentioning these schemes. E.g. "Hello! I am your government scheme specialist. I can guide you through savings, insurance, and pension schemes like PMJDY, PMSBY, APY, and Sukanya Samriddhi Yojana."\n'
+            "- LIMITS: Do not answer questions about crops, agriculture, PM-KISAN, or business/Mudra loans. If the user asks about those, or if their scheme queries are complete, call `return_to_main_assistant`.\n"
+            "- Do not use markdown formatting (asterisks, bold, emojis). Keep responses short and conversational.\n"
+            + facts_summary
+        )
+        super().__init__(instructions=instructions, chat_ctx=chat_ctx)
+        self.user_id = user_id
+
+    async def on_enter(self) -> None:
+        logger.info("SchemeSpecialistAgent entered.")
+        if self.session and self.session.room_io and self.session.room_io.room:
+            local_p = self.session.room_io.room.local_participant
+            if local_p:
+                await local_p.set_attributes({"agent_id": "scheme_specialist_agent"})
+
+    @function_tool
+    async def check_scheme_eligibility(
+        self,
+        scheme_name: str,
+        age: int,
+        is_income_tax_payer: bool = False,
+        girl_child_age: int = -1,
+        is_indian_resident: bool = True,
+    ) -> str:
+        """Checks the eligibility of a caller for PMJDY, PMSBY, PMJJBY, APY, or SSY and returns required documents.
+
+        Args:
+            scheme_name: Must be exactly one of: "PMJDY", "PMSBY", "PMJJBY", "APY", "SSY".
+            age: The beneficiary's age in years.
+            is_income_tax_payer: True if the beneficiary pays income tax, False otherwise.
+            girl_child_age: The age of the girl child in years (for SSY). Use -1 if not applicable.
+            is_indian_resident: True if the beneficiary is a resident of India, False otherwise.
+        """
+        import json
+
+        try:
+            from schemes_data import evaluate_eligibility
+        except ImportError:
+            from src.schemes_data import evaluate_eligibility
+
+        res = evaluate_eligibility(
+            scheme_id=scheme_name.lower(),
+            age=age,
+            is_taxpayer=is_income_tax_payer,
+            gender=None,
+            land_holding_acres=None,
+        )
+        return json.dumps(res)
+
+    @function_tool
+    async def return_to_main_assistant(self) -> str:
+        """Call this tool when the user's queries regarding savings, insurance, or pension schemes are resolved, or if they want to change the topic back to general questions."""
+        logger.info("Returning to main assistant from SchemeSpecialistAgent.")
+        self.complete("Scheme specialist work completed.")
+        return "Returning to the main assistant."
+
+
+class CropSpecialistAgent(AgentTask[str]):
+    def __init__(self, user_id: str, chat_ctx: ChatContext) -> None:
+        user_info = db.get_user(user_id)
+        facts_summary = ""
+        if user_info:
+            facts_summary = f"\nSAVED USER DETAILS AND FACTS:\nName: {user_info.get('name')}\nLanguage Preference: {user_info.get('language_preference')}\nFacts: {user_info.get('facts')}"
+
+        instructions = (
+            "ROLE & IDENTITY:\n"
+            "- You are the Crop and Agriculture Specialist.\n"
+            "- Your sole job is to help farmers and citizens with agriculture-related questions and the PM Kisan Samman Nidhi (PM-KISAN) scheme.\n"
+            '- GREETING: When you take over, introduce yourself, e.g. "Hello! I am your crop specialist. I can assist you with agriculture-related schemes like PM-KISAN, land holding requirements, and crop welfare."\n'
+            "- LIMITS: Do not answer questions about general savings, insurance, pension, or business Mudra loans. If they ask about those or are done with crop queries, call `return_to_main_assistant`.\n"
+            "- Do not use markdown formatting (asterisks, bold, emojis). Keep responses short and conversational.\n"
+            + facts_summary
+        )
+        super().__init__(instructions=instructions, chat_ctx=chat_ctx)
+        self.user_id = user_id
+
+    async def on_enter(self) -> None:
+        logger.info("CropSpecialistAgent entered.")
+        if self.session and self.session.room_io and self.session.room_io.room:
+            local_p = self.session.room_io.room.local_participant
+            if local_p:
+                await local_p.set_attributes({"agent_id": "crop_specialist_agent"})
+
+    @function_tool
+    async def check_crop_scheme_eligibility(
+        self,
+        age: int,
+        land_holding_acres: float,
+        is_income_tax_payer: bool = False,
+    ) -> str:
+        """Checks the eligibility of a caller for the PM-KISAN agriculture scheme.
+
+        Args:
+            age: The beneficiary's age in years.
+            land_holding_acres: Land holding in acres. Must be greater than 0.
+            is_income_tax_payer: True if the beneficiary pays income tax, False otherwise.
+        """
+        import json
+
+        try:
+            from schemes_data import evaluate_eligibility
+        except ImportError:
+            from src.schemes_data import evaluate_eligibility
+
+        res = evaluate_eligibility(
+            scheme_id="pm_kisan",
+            age=age,
+            is_taxpayer=is_income_tax_payer,
+            land_holding_acres=land_holding_acres,
+        )
+        return json.dumps(res)
+
+    @function_tool
+    async def return_to_main_assistant(self) -> str:
+        """Call this tool when the user's queries regarding crops, farming, or agriculture schemes are resolved, or if they want to change the topic back to general questions."""
+        logger.info("Returning to main assistant from CropSpecialistAgent.")
+        self.complete("Crop specialist work completed.")
+        return "Returning to the main assistant."
+
+
+class BusinessLoanSpecialistAgent(AgentTask[str]):
+    def __init__(self, user_id: str, chat_ctx: ChatContext) -> None:
+        user_info = db.get_user(user_id)
+        facts_summary = ""
+        if user_info:
+            facts_summary = f"\nSAVED USER DETAILS AND FACTS:\nName: {user_info.get('name')}\nLanguage Preference: {user_info.get('language_preference')}\nFacts: {user_info.get('facts')}"
+
+        instructions = (
+            "ROLE & IDENTITY:\n"
+            "- You are the Business Loan Specialist.\n"
+            "- Your sole job is to help users with business expansion, entrepreneurship, micro-enterprise growth, and the Pradhan Mantri MUDRA Yojana (PMMY) scheme.\n"
+            '- GREETING: When you take over, introduce yourself, e.g. "Hello! I am your business loan specialist. I can help you with micro-enterprise loans, Mudra scheme options, and business growth."\n'
+            "- LIMITS: Do not answer questions about crops, agriculture, PM-KISAN, or general savings/pension/insurance schemes. If they ask about those or are done with loan queries, call `return_to_main_assistant`.\n"
+            "- Do not use markdown formatting (asterisks, bold, emojis). Keep responses short and conversational.\n"
+            + facts_summary
+        )
+        super().__init__(instructions=instructions, chat_ctx=chat_ctx)
+        self.user_id = user_id
+
+    async def on_enter(self) -> None:
+        logger.info("BusinessLoanSpecialistAgent entered.")
+        if self.session and self.session.room_io and self.session.room_io.room:
+            local_p = self.session.room_io.room.local_participant
+            if local_p:
+                await local_p.set_attributes(
+                    {"agent_id": "business_loan_specialist_agent"}
+                )
+
+    @function_tool
+    async def check_business_loan_eligibility(
+        self,
+        age: int,
+        is_income_tax_payer: bool = False,
+    ) -> str:
+        """Checks the eligibility of a caller for the Pradhan Mantri MUDRA Yojana (PMMY) business loan scheme.
+
+        Args:
+            age: The beneficiary's age in years.
+            is_income_tax_payer: True if the beneficiary pays income tax, False otherwise.
+        """
+        import json
+
+        try:
+            from schemes_data import evaluate_eligibility
+        except ImportError:
+            from src.schemes_data import evaluate_eligibility
+
+        res = evaluate_eligibility(
+            scheme_id="pmmy", age=age, is_taxpayer=is_income_tax_payer
+        )
+        return json.dumps(res)
+
+    @function_tool
+    async def return_to_main_assistant(self) -> str:
+        """Call this tool when the user's queries regarding business loans or Mudra scheme are resolved, or if they want to change the topic back to general questions."""
+        logger.info("Returning to main assistant from BusinessLoanSpecialistAgent.")
+        self.complete("Business loan specialist work completed.")
+        return "Returning to the main assistant."
+
+
 class Assistant(Agent):
     def __init__(self, user_id: str, instructions: str = SYSTEM_PROMPT) -> None:
         super().__init__(instructions=instructions)
@@ -38,6 +236,13 @@ class Assistant(Agent):
         self.outcome_type = "none"
         self.language = "English"
         self.failure_type = "none"
+
+    async def on_enter(self) -> None:
+        logger.info("Assistant entered.")
+        if self.session and self.session.room_io and self.session.room_io.room:
+            local_p = self.session.room_io.room.local_participant
+            if local_p:
+                await local_p.set_attributes({"agent_id": "assistant"})
 
     @function_tool
     async def lookup_caller(self) -> str:
@@ -128,270 +333,57 @@ class Assistant(Agent):
         return f"Successfully saved details for user {name} (ID: {self.user_id})."
 
     @function_tool
-    async def check_scheme_eligibility(
-        self,
-        scheme_name: str,
-        age: int,
-        is_income_tax_payer: bool = False,
-        girl_child_age: int = -1,
-        is_indian_resident: bool = True,
-    ) -> str:
-        """Checks the eligibility of a caller for a specific Indian government financial scheme and returns the required document checklist.
-
-        Only call this tool when the caller explicitly asks about their eligibility, required documents, or interest rates/premiums for one of the supported schemes: PMJDY, PMSBY, PMJJBY, APY, or SSY, AND you have gathered the necessary parameters (such as age, tax payer status, or girl child details). Do NOT call this tool for general conversations or if you don't know which scheme they are interested in.
-
-        Args:
-            scheme_name: The abbreviation of the scheme name to check. Must be exactly one of: "PMJDY", "PMSBY", "PMJJBY", "APY", "SSY".
-            age: The beneficiary's age in years.
-            is_income_tax_payer: True if the beneficiary pays income tax, False otherwise. (Important for APY eligibility).
-            girl_child_age: The age of the girl child in years. (Mandatory when checking Sukanya Samriddhi Yojana / SSY). Use -1 if not applicable.
-            is_indian_resident: True if the beneficiary is a resident of India, False otherwise.
-        """
-        import json
-        from datetime import datetime
-
-        today_str = datetime.now().strftime("%B %d, %Y")
-
+    async def handoff_to_crop_specialist(self) -> str:
+        """Handoff the conversation to the Crop Specialist when the user asks about crops, farming, agriculture, land-holding, or the PM-KISAN scheme."""
+        logger.info("Handoff to CropSpecialistAgent triggered.")
         try:
-            # SIMULATE TRANSIENT FAILURE (Step 4 & user request)
-            # The first call to this tool in the session will fail, and subsequent retries will succeed.
-            attempts = getattr(self, "_eligibility_attempts", 0) + 1
-            self._eligibility_attempts = attempts
-            if attempts == 1:
-                self.failure_type = "tool_failure"
-                raise Exception("API Connection Timeout (Simulated Transient Error)")
-
-            logger.info(
-                f"Tool check_scheme_eligibility called (Attempt {attempts}) for scheme: {scheme_name}, user_id: {self.user_id}"
+            await self.session.say(
+                "I will connect you to our crop specialist.", allow_interruptions=True
             )
-            self.outcome_type = "eligibility_check"
-            name_upper = scheme_name.upper().strip()
-            supported_schemes = ["PMJDY", "PMSBY", "PMJJBY", "APY", "SSY"]
-
-            if name_upper not in supported_schemes:
-                return json.dumps(
-                    {
-                        "eligible": False,
-                        "reason": (
-                            f"Scheme '{scheme_name}' is not supported. Supported"
-                            f" schemes are: {', '.join(supported_schemes)}."
-                        ),
-                        "document_checklist": [],
-                        "scheme_benefits": {},
-                        "data_last_updated": today_str,
-                        "error": f"Unsupported scheme: {scheme_name}",
-                    }
-                )
-
-            if not is_indian_resident:
-                return json.dumps(
-                    {
-                        "eligible": False,
-                        "reason": (
-                            f"Only Indian residents are eligible for {name_upper}."
-                        ),
-                        "document_checklist": [],
-                        "scheme_benefits": {},
-                        "data_last_updated": today_str,
-                    }
-                )
-
-            if name_upper == "PMJDY":
-                # Pradhan Mantri Jan Dhan Yojana
-                is_eligible = age >= 10
-                reason = (
-                    "Eligible. Open to any resident Indian citizen aged 10 or"
-                    " above. (Designed for individuals who do not have any other"
-                    " bank account)."
-                    if is_eligible
-                    else ("Ineligible. Min age to open PMJDY account is 10 years.")
-                )
-                docs = [
-                    "Aadhaar Card (primary KYC)",
-                    "PAN Card (if available)",
-                    (
-                        "Or other officially valid document (Voter ID, driving"
-                        " license, NREGA card)"
-                    ),
-                ]
-                benefits = {
-                    "benefits_and_interest": (
-                        "Basic savings account with zero minimum balance"
-                        " requirement, earn interest on savings deposit (approx"
-                        " 2.70% to 3.00% p.a. depending on bank), free Rupay"
-                        " debit card with built-in Rs 2 Lakh accidental insurance"
-                        " cover, and overdraft facility up to Rs 10,000 for"
-                        " eligible accounts."
-                    )
-                }
-
-            elif name_upper == "PMSBY":
-                # Pradhan Mantri Suraksha Bima Yojana
-                is_eligible = 18 <= age <= 70
-                reason = (
-                    "Eligible. Open to individuals aged between 18 and 70 years."
-                    if is_eligible
-                    else (
-                        f"Ineligible. Age must be between 18 and 70 years."
-                        f" Provided age: {age}."
-                    )
-                )
-                docs = [
-                    "Aadhaar Card (primary KYC)",
-                    "Savings bank account details",
-                    "Consent form for auto-debit of premium",
-                ]
-                benefits = {
-                    "premium": "Rs 20 per annum (auto-debited from savings account)",
-                    "insurance_cover": (
-                        "Rs 2 Lakh for accidental death or total permanent"
-                        " disability, and Rs 1 Lakh for partial permanent"
-                        " disability."
-                    ),
-                    "validity": ("1 year (June 1 to May 31), auto-renewed annually."),
-                }
-
-            elif name_upper == "PMJJBY":
-                # Pradhan Mantri Jeevan Jyoti Bima Yojana
-                is_eligible = 18 <= age <= 50
-                reason = (
-                    "Eligible. Open to individuals aged between 18 and 50 years."
-                    if is_eligible
-                    else (
-                        f"Ineligible. Age must be between 18 and 50 years."
-                        f" Provided age: {age}."
-                    )
-                )
-                docs = [
-                    "Aadhaar Card (primary KYC)",
-                    "Savings bank account details",
-                    "Consent form for auto-debit of premium",
-                    "Self-declaration of good health (if enrolling late)",
-                ]
-                benefits = {
-                    "premium": ("Rs 436 per annum (auto-debited from savings account)"),
-                    "insurance_cover": (
-                        "Rs 2 Lakh life insurance cover for death due to any cause."
-                    ),
-                    "validity": (
-                        "1 year (June 1 to May 31), auto-renewed annually. Risk"
-                        " cover continues up to age 55 if enrolled by 50."
-                    ),
-                }
-
-            elif name_upper == "APY":
-                # Atal Pension Yojana
-                if is_income_tax_payer:
-                    is_eligible = False
-                    reason = (
-                        "Ineligible. Income tax payers are not eligible to join"
-                        " Atal Pension Yojana (rule effective since October 1,"
-                        " 2022)."
-                    )
-                else:
-                    is_eligible = 18 <= age <= 40
-                    reason = (
-                        "Eligible. Open to all non-taxpaying citizens aged"
-                        " between 18 and 40 years."
-                        if is_eligible
-                        else (
-                            "Ineligible. Age must be between 18 and 40 years to"
-                            f" enroll. Provided age: {age}."
-                        )
-                    )
-                docs = [
-                    "Aadhaar Card (primary KYC)",
-                    "Mobile number",
-                    "Savings bank account details",
-                    "Auto-debit authorization form",
-                ]
-                benefits = {
-                    "premium": ("Varies based on entry age and selected pension slab."),
-                    "pension_benefit": (
-                        "Guaranteed minimum pension of Rs 1,000, Rs 2,000, Rs"
-                        " 3,000, Rs 4,000, or Rs 5,000 per month after age 60,"
-                        " depending on contributions."
-                    ),
-                    "co_contribution": (
-                        "Government co-contribution is not available for new"
-                        " subscribers, but the pension amount is fully"
-                        " guaranteed by the Government of India."
-                    ),
-                }
-
-            elif name_upper == "SSY":
-                # Sukanya Samriddhi Yojana
-                if girl_child_age == -1:
-                    return json.dumps(
-                        {
-                            "eligible": "uncertain",
-                            "reason": (
-                                "Please provide the age of the girl child using the"
-                                " 'girl_child_age' parameter."
-                            ),
-                            "document_checklist": [],
-                            "scheme_benefits": {},
-                            "data_last_updated": today_str,
-                        }
-                    )
-                is_eligible = 0 <= girl_child_age <= 10
-                reason = (
-                    "Eligible. Open for girl child aged 10 years or below."
-                    if is_eligible
-                    else (
-                        "Ineligible. The account can only be opened for a girl"
-                        " child aged 10 years or below. Provided girl child"
-                        " age: "
-                        f"{girl_child_age}."
-                    )
-                )
-                docs = [
-                    "Birth certificate of the girl child (mandatory)",
-                    "Aadhaar Card and PAN Card of the parent/guardian",
-                    "Photograph of the girl child and parent",
-                    "Proof of address",
-                ]
-                benefits = {
-                    "interest_rate": (
-                        "8.2% per annum (compounded annually, tax-free"
-                        " interest, interest rate updated for fiscal year"
-                        f" 2025-2026 as of {today_str})"
-                    ),
-                    "tax_benefits": (
-                        "Triple tax exemption under Section 80C of the Income Tax Act."
-                    ),
-                    "maturity": (
-                        "Matures after 21 years from account opening or upon"
-                        " marriage of the girl child after she reaches 18 years."
-                    ),
-                }
-
-            return json.dumps(
-                {
-                    "eligible": is_eligible,
-                    "reason": reason,
-                    "document_checklist": docs,
-                    "scheme_benefits": benefits,
-                    "data_last_updated": today_str,
-                }
+            specialist = CropSpecialistAgent(
+                user_id=self.user_id, chat_ctx=self.chat_ctx.copy()
             )
-
+            await specialist
+            return "Handoff to crop specialist completed."
         except Exception as e:
-            logger.error(f"Error checking scheme eligibility: {e}")
-            return json.dumps(
-                {
-                    "eligible": "error",
-                    "reason": (
-                        "The eligibility checker system is temporarily"
-                        " experiencing technical issues. Please check the inputs or"
-                        " try again shortly."
-                    ),
-                    "document_checklist": [],
-                    "scheme_benefits": {},
-                    "data_last_updated": today_str,
-                    "error": str(e),
-                }
+            logger.error(f"Handoff to crop specialist failed: {e}")
+            return f"I'm sorry, I was unable to connect you to our crop specialist: {e}. I can help you with your question."
+
+    @function_tool
+    async def handoff_to_business_loan_specialist(self) -> str:
+        """Handoff the conversation to the Business Loan Specialist when the user asks about Mudra loans, micro-enterprise loans, business growth, or PMMY."""
+        logger.info("Handoff to BusinessLoanSpecialistAgent triggered.")
+        try:
+            await self.session.say(
+                "I will connect you to our business loan specialist.",
+                allow_interruptions=True,
             )
+            specialist = BusinessLoanSpecialistAgent(
+                user_id=self.user_id, chat_ctx=self.chat_ctx.copy()
+            )
+            await specialist
+            return "Handoff to business loan specialist completed."
+        except Exception as e:
+            logger.error(f"Handoff to business loan specialist failed: {e}")
+            return f"I'm sorry, I was unable to connect you to our business loan specialist: {e}. I can help you with your question."
+
+    @function_tool
+    async def handoff_to_scheme_specialist(self) -> str:
+        """Handoff the conversation to the Government Scheme Specialist when the user asks about general savings, insurance, pension, or schemes like PMJDY, PMSBY, PMJJBY, APY, or SSY."""
+        logger.info("Handoff to SchemeSpecialistAgent triggered.")
+        try:
+            await self.session.say(
+                "I will connect you to our government scheme specialist.",
+                allow_interruptions=True,
+            )
+            specialist = SchemeSpecialistAgent(
+                user_id=self.user_id, chat_ctx=self.chat_ctx.copy()
+            )
+            await specialist
+            return "Handoff to government scheme specialist completed."
+        except Exception as e:
+            logger.error(f"Handoff to government scheme specialist failed: {e}")
+            return f"I'm sorry, I was unable to connect you to our government scheme specialist: {e}. I can help you with your question."
 
 
 server = AgentServer()
@@ -475,7 +467,7 @@ async def my_agent(ctx: JobContext):
         session = AgentSession(
             stt=deepgram.STT(model="nova-3", language="multi"),
             llm=google.LLM(
-                model="gemini-3.5-flash",
+                model="gemini-3.6-flash",
             ),
             tts=murf.TTS(
                 voice="Anisha",
