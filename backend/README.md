@@ -176,6 +176,17 @@ Default is Google Gemini. To switch:
 - **Gemini (default):** Set `GOOGLE_API_KEY` in `.env.local`
 - **OpenAI:** Set `OPENAI_API_KEY`, install `livekit-agents[openai]`, and change the `llm=` argument
 
+## Telephony
+
+To connect the agent to a real phone number — answering incoming calls or placing outgoing ones — see [`src/telephony/`](src/telephony/). It contains two self-contained starters (`inbound/` and `outbound/`) that reuse this same voice pipeline, plus SIP trunk and dispatch rule templates.
+
+```bash
+uv run python src/telephony/inbound/agent.py dev              # answer calls
+uv run python src/telephony/outbound/dial.py --to +15551234567  # place a call
+```
+
+No extra dependencies required. Full setup guide: [`src/telephony/README.md`](src/telephony/README.md).
+
 ## Testing
 
 The project includes an eval suite based on the LiveKit Agents [testing framework](https://docs.livekit.io/agents/build/testing/):

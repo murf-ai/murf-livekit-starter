@@ -8,6 +8,7 @@ This is a monorepo for a voice AI agent starter, powered by Murf Falcon TTS and 
 murf-livekit-starter/
 ├── backend/          # Python voice agent (LiveKit Agents + Murf Falcon TTS)
 │   ├── src/agent.py  # Agent entrypoint — all pipeline config lives here
+│   ├── src/telephony/# Optional phone agents (inbound/ and outbound/)
 │   └── tests/        # LLM-judged eval tests
 ├── frontend/         # Next.js UI (LiveKit Agents UI components)
 │   ├── app/          # Pages and API routes
@@ -66,6 +67,18 @@ uv run pytest
 Requires `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` to be set.
 
 When modifying the system prompt or adding tools, write tests first. Use the existing tests as a pattern — they call `session.run(user_input=...)` and use `.judge()` to evaluate responses.
+
+### Telephony (`backend/src/telephony/`)
+Optional phone-call agents, separate from the browser agent in `src/agent.py`:
+- `inbound/agent.py` — answers incoming calls (`agent_name="inbound-agent"`)
+- `outbound/agent.py` — places calls (`agent_name="outbound-agent"`), triggered by `outbound/dial.py`
+- `*.json` — SIP trunk and dispatch rule templates applied with the `lk` CLI
+
+Each agent file is intentionally self-contained: the voice pipeline is duplicated rather than shared, so a folder can be copied out and hacked on independently. If you change the voice or model in `src/agent.py`, update the telephony agents too.
+
+Requires no extra dependencies — `livekit-api` ships with `livekit-agents`. Uses the same `.env.local` as the rest of the backend, plus `LIVEKIT_SIP_OUTBOUND_TRUNK_ID` (outbound only) and the optional `TRANSFER_TO_NUMBER`.
+
+See `backend/src/telephony/README.md` for the SIP setup.
 
 ### Dependencies
 Managed via `uv` and defined in `pyproject.toml`. Always use `uv sync` and `uv run` — never `pip install`.

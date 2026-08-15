@@ -167,5 +167,22 @@ pnpm dev
 Explore the complete codebase, system prompts, database setups, and schemas:
 * **GitHub Repository**: [murf-livekit-starter](https://github.com/murf-ai/murf-livekit-starter)
 
+**Telephony**
+
+- [Telephony Setup Guide](./backend/src/telephony/README.md) — inbound and outbound calls in this repo
+- [LiveKit SIP Docs](https://docs.livekit.io/sip/) — trunks, dispatch rules, call lifecycle
+- [Accepting Inbound Calls](https://docs.livekit.io/sip/accepting-calls/)
+- [Making Outbound Calls](https://docs.livekit.io/sip/making-calls/)
+- [SIP Dispatch Rules](https://docs.livekit.io/sip/dispatch-rule/)
+- [Agent Dispatch](https://docs.livekit.io/agents/server/agent-dispatch/) — how agents get routed to calls
+- [SIP Troubleshooting](https://docs.livekit.io/reference/telephony/troubleshooting/)
+- [Twilio Elastic SIP Trunking](https://www.twilio.com/docs/sip-trunking) — the provider used in the examples
+
+**Other**
+
+- [LiveKit Docs](https://docs.livekit.io)
+- [Deepgram Docs](https://developers.deepgram.com)
+- [TTS Latency Benchmarker](https://github.com/sahilsgupta/tts-latency-benchmarker) — run your own p50/p95 tests across providers
+
 ---
 *Created as part of the **10 Days of Voice Agents — #VoiceForBharat Edition** by **Hemanth S.P** powered by LiveKit Agents & **Murf Falcon TTS**.*

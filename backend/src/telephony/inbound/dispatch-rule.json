@@ -1,0 +1,16 @@
+{
+  "name": "Inbound calls",
+  "trunkIds": ["ST_REPLACE_WITH_YOUR_TRUNK_ID"],
+  "rule": {
+    "dispatchRuleIndividual": {
+      "roomPrefix": "call-"
+    }
+  },
+  "roomConfig": {
+    "agents": [
+      {
+        "agentName": "inbound-agent"
+      }
+    ]
+  }
+}
